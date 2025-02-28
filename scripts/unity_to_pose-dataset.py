@@ -7,9 +7,10 @@ import random
 import cv2
 from typing import List
 from pathlib import Path
+from test_yolo import make_img_square
 
-class UnityToYOLOConverter:
-    def __init__(self, input_dirs: List[str], output_dir: str, validation_split = 0.15, verbose=True):
+class UnityToPoseEstimationDataset:
+    def __init__(self, input_dirs: List[str], output_dir: str, validation_split = 0.15, crop_size=96, verbose=True):
         """
         Initialize the converter with input directories and an output directory.
 
@@ -29,10 +30,11 @@ class UnityToYOLOConverter:
 
         self.objects = {}
 
+        self.crop_size = crop_size
         self.verbose = verbose
 
     def create_subdirectories(self,exist_ok=True):
-        # Create necessary YOLO subdirectories
+        # Create necessary subdirectories
         self.image_dir = join(self.output_dir, 'images')
         self.label_dir = join(self.output_dir, 'labels')
         os.makedirs(self.image_dir, exist_ok=exist_ok)
@@ -127,9 +129,11 @@ class UnityToYOLOConverter:
             count_train = 0
             count_val = 0
             count_labels = 0
-
+            
+            # For each Unity output image...
             # ASSUMES: There is only one step per sequence (gets step0)
             for idx, seq in enumerate(sequence_dirs, start=1):
+
                 # Decide whether data is in train or validation set
                 set_choice = "train"
                 # Get the validation data from the end of the list
@@ -140,77 +144,123 @@ class UnityToYOLOConverter:
                     set_choice = "train"
                     count_train += 1
 
-                # Number ID for data entry
-                id_str = f"{self.current_data_id:08d}"
-
                 # Verify existence of source data and setup output files
                 image_source = join(seq,"step0.camera.png")
-                image_dest = join(self.image_dir,set_choice,f"{id_str}.png")
+
                 if not os.path.exists(image_source):
                     print(f"Image {image_source} not found, skipping.")
                     continue
+                image_original = cv2.imread(image_source)
                 # Copy image to new location
-                shutil.copy(image_source, image_dest)
-                src_path = "/".join(Path(image_source).parts[-3:])
-                dst_path = "/".join(Path(image_dest).parts[-3:])
-                entry_string = f"[{set_choice.upper().center(5)}][ {src_path.ljust(45)}] -> [ {dst_path.ljust(27)}]"
+                # shutil.copy(image_source, image_dest)
+                # src_path = "/".join(Path(image_source).parts[-3:])
+                # dst_path = "/".join(Path(image_dest).parts[-3:])
+                # entry_string = f"[{set_choice.upper().center(5)}][ {src_path.ljust(45)}] -> [ {dst_path.ljust(27)}]"
+                entry_string = ""
 
                 label_source = join(seq,"step0.frame_data.json")
-                label_dest = join(self.label_dir,set_choice,f"{id_str}.txt")
+                
                 if not os.path.exists(label_source):
                     print(f"Image {label_source} not found, skipping.")
                     continue
                 
                 with open(label_source, 'r') as f:
                     label_json = json.load(f)
-                # Get frame size information
+                # GET CAMERA INTRINSIC INFORMATION
+                camera_dim = label_json["captures"][0]["dimension"]
+                camera_matrix = label_json["captures"][0]["matrix"] # Loads as 3x3 flattened to 9x1
                 w = int(label_json["captures"][0]["dimension"][0])
                 h = int(label_json["captures"][0]["dimension"][1])
+                cam_cx = w / 2
+                cam_cy = h /2
+                cam_fx = camera_matrix[0] * cam_cx # matrix[0][0]
+                cam_fy = camera_matrix[4] * cam_cy # matrix[1][1]
                 # print(f"WxH: {w} x {h}")
 
+                # GET BOUNDING BOX ANNOTATIONS
                 annotations = label_json["captures"][0]["annotations"]
-                objects = None
+                bb_2d = None
+                bb_3d = None
                 for ann in annotations:
                     if ann["id"] == "bounding box":
                         if "values" in ann:
-                            objects = ann["values"]
+                            bb_2d = ann["values"]
                         else:
-                            objects = []
+                            bb_2d = []
+                    if ann["id"] == "bounding box 3D":
+                        if "values" in ann:
+                            bb_3d = ann["values"]
+                        else:
+                            bb_3d = []
                             # print(f"WARNING: No objects found for {seq}")
                 # print(json.dumps(objects, indent=4))
-                if objects is None:
+                if bb_2d is None:
                     print(f"ERROR: Didn't find bounding box annotation, skipping...")
                     continue
-                
-                count_labels += len(objects)
-                # Process labels
-                with open(label_dest, 'w') as lf:
-                    # print(f" > Detections Found: {len(objects)}")
-                    entry_string += f"[ Labels: {str(len(objects)).center(4)}] "
-                    for obj in objects:
-                        category_id = self.yolo_classes[obj['labelName']]
-                        x = obj['origin'][0]
-                        y = obj['origin'][1]
-                        width = obj['dimension'][0]
-                        height = obj['dimension'][1]
-                        bbox = [x, y, width, height]
-                        # Normalize bounding box
-                        # img = cv2.imread(image_source)
-                        # h, w, _ = img.shape
-                        x_center = (bbox[0] + bbox[2] / 2) / w
-                        y_center = (bbox[1] + bbox[3] / 2) / h
-                        width = bbox[2] / w
-                        height = bbox[3] / h
+                if bb_3d is None:
+                    print(f"ERROR: Didn't find 3D bounding box annotation, skipping...")
+                    continue
 
-                        # Write to YOLO label file
-                        lf.write(f"{category_id} {x_center} {y_center} {width} {height}\n")
-                        # print(f" > {category_id} {x_center} {y_center} {width} {height}")
-                        
+                assert len(bb_2d) == len(bb_3d)
+                
+                # For each object in the scene...
+                # ASSUMES: BB2D and BB3D are in the same order
+                for bb2, bb3 in zip(bb_2d, bb_3d):
+                    assert bb2["instanceId"] == bb3["instanceId"] 
+                    # STEP 1: GET 2D BB Crop from original image
+                    x1 = int(bb2["origin"][0])
+                    y1 = int(bb2["origin"][1])
+                    x2 = x1 + int(bb2["dimension"][0])
+                    y2 = y1 + int(bb2["dimension"][1])
+                    # Extract crop, make it square, and reduce it to specified size
+                    crop = image_original[y1:y2,x1:x2]
+                    crop = make_img_square(crop,self.crop_size)
+                    # Number ID for data entry
+                    id_str = f"{self.current_data_id:08d}"
+                    image_dest = join(self.image_dir,set_choice,f"{id_str}.png")
+                    # Save Crop Image
+                    cv2.imwrite(image_dest,crop)
+
+                    # STEP 2: Extract BB information and camera intrinsics
+                    # FORMAT: LabelID, bbcenterx, bbcentery, bbwidth, bbheight,
+                    category_id = self.yolo_classes[bb3['labelName']]
+                    bbcx = bb2["origin"][0] + (bb2["dimension"][0]/2) # 2D BB Center X
+                    bbcy = bb2["origin"][1] + (bb2["dimension"][1]/2) # 2D BB Center Y
+                    bbw = bb2["dimension"][0] # 2D BB Width
+                    bbh = bb2["dimension"][1] # 2D BB Height
+                    # Crop Vector Values (As defined in source paper)
+                    cvec_u = (bbcx - cam_cx) / cam_fx
+                    cvec_v = (bbcy - cam_cy) / cam_fy
+                    cvec_w = bbw / cam_fx
+                    cvec_h = bbh / cam_fy
+                    uvwh = [cvec_u, cvec_v, cvec_w, cvec_h]
+                    # print(f" > UVWH: [ {cvec_u} {cvec_v} {cvec_w} {cvec_h} ]")
+                    # Get Size and Translation Vector
+                    outvec_size = bb3["size"]
+                    outvec_translate = bb3["translation"]
+                    # Get Rotation Vector Quaternion
+                    #TODO: Implement Quaternion regularization to remove redundant poses
+                    outvec_rot = bb3["rotation"]
+
+                    # Write data to txt file
+                    data_str = f"{category_id},{uvwh},{outvec_size},{outvec_translate},{outvec_rot}"
+                    label_dest = join(self.label_dir,set_choice,f"{id_str}.txt")
+                    with open(label_dest, 'w') as lf:
+                        lf.write(f"{data_str}")
+                    # Increment data ID
+                    self.current_data_id += 1
+                    
+
+                count_labels += len(bb_2d)
+
                 # Print info line for every image processed
+                entry_string = f"[{str(idx).center(5)}][ Bounding Boxes: {str(len(bb_2d)).center(10)}]"
                 if self.verbose: print(entry_string)
-                # Increment data ID
-                self.current_data_id += 1 
-            print(f"[ Train Count: {count_train:4d} ][ Validation Count: {count_val:4d} ][ Average Label Count: {(count_labels/len(sequence_dirs)):5f} ]\n")
+                 
+            print(f"[ Train Count: {count_train:4d} ][ Validation Count: {count_val:4d} ]")
+            print(f"[ Total Label Count: {(count_labels):5d} ][ Average Label Count: {(count_labels/len(sequence_dirs)):5f} ]")
+            print(f"[ Camera Properties ][ {w} x {h} ][ cx:{cam_cx} cy:{cam_cy} ][ fx:{cam_fx:.2f} fy:{cam_fy:.2f} ]\n")
+                
             total_count_train += count_train
             total_count_val += count_val
         print(f"[ Total Train: {total_count_train:5d} ][ Total Val: {total_count_val:5d} ]")
@@ -230,17 +280,17 @@ class UnityToYOLOConverter:
 
 # Example usage
 if __name__ == "__main__":
-    unity_root = "/home/csrobot/Unity/SynthData/Fetchit"
+    unity_root = "/home/csrobot/Unity/SynthData/PoseTesting"
     # unity_datasets = ['engine_fruit' ,'engine_nerve' , 'negative_fruit', 'negative_nerve']
-    unity_datasets = ['solo' ,'solo_1' , 'solo_2', 'solo_3','solo_4' , 'solo_5', 'solo_6','solo_7' , 'solo_8','solo_9' , 'solo_10']
+    unity_datasets = ['mini_test']
     convertion_list = [join(unity_root,dataset) for dataset in unity_datasets]
 
-    yolo_root = "/home/csrobot/synth_perception/data"
-    yolo_dataset_name = "fetchit"
+    output_root = "/home/csrobot/synth_perception/data/pose-estimation"
+    output_dataset_name = "test"
     validation_split = 0.15
+    crop_size = 96
+    verbose = True
 
-    verbose = False
-
-    converter = UnityToYOLOConverter(convertion_list, join(yolo_root,yolo_dataset_name),validation_split,verbose)
+    converter = UnityToPoseEstimationDataset(convertion_list, join(output_root,output_dataset_name),validation_split,crop_size,verbose)
     converter.convert()
     converter.validate_output()

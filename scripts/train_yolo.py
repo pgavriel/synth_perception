@@ -6,7 +6,7 @@ if __name__ == "__main__":
 
     training_epochs = 100 # 100
     # Print Settings
-    data_folder = "/home/csrobot/object_detection/data"
+    data_folder = "/home/csrobot/synth_perception/data"
     settings.update({"datasets_dir": data_folder})
     print(settings)
 
@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     # Train the model
     
-    dataset_name = "test"
+    dataset_name = "fetchit"
     dataset_file = join(data_folder,dataset_name,"data.yaml")
     print("DATA", "FOUND" if isfile(join(dataset_file)) else "NOT FOUND")
     # dataset_file = "../data/test/data.yaml"
