@@ -55,8 +55,10 @@ class UnityToYOLOConverter:
 
             with open(annotations_path, 'r') as f:
                 annotations = json.load(f)
-
-            labels = annotations["annotationDefinitions"][0]["spec"]
+            if "spec" in annotations["annotationDefinitions"][0]:
+                labels = annotations["annotationDefinitions"][0]["spec"]
+            else:
+                labels = []
             lbls = []
             for l in labels:
                 unique_labels.add(l['label_name'])
@@ -230,13 +232,13 @@ class UnityToYOLOConverter:
 
 # Example usage
 if __name__ == "__main__":
-    unity_root = "/home/csrobot/Unity/SynthData/Fetchit"
+    unity_root = "/home/csrobot/Unity/SynthData/PoseTesting"
     # unity_datasets = ['engine_fruit' ,'engine_nerve' , 'negative_fruit', 'negative_nerve']
-    unity_datasets = ['solo' ,'solo_1' , 'solo_2', 'solo_3','solo_4' , 'solo_5', 'solo_6','solo_7' , 'solo_8','solo_9' , 'solo_10']
+    unity_datasets = ['mustard_nerve','mustard_fruit','negative_nerve','negative_fruit']
     convertion_list = [join(unity_root,dataset) for dataset in unity_datasets]
 
     yolo_root = "/home/csrobot/synth_perception/data"
-    yolo_dataset_name = "fetchit"
+    yolo_dataset_name = "mustard_detec"
     validation_split = 0.15
 
     verbose = False

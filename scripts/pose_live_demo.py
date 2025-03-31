@@ -1,15 +1,24 @@
 import cv2
 import time
+import torch
 from ultralytics import YOLO
 from os.path import join
+from pose_estimator_model import PoseEstimationModel
 
-# Load the YOLO model
-# Load a model
-model_folder = "train4"
+# Load the YOLO detection model
+model_folder = "train7"
 model_path = join("/home/csrobot/synth_perception/runs/detect",model_folder,"weights/best.pt")
-model = YOLO(model_path)  
-model.info()
+detect_model = YOLO(model_path)  
+detect_model.info()
 
+# Load the pose estimator model
+pose_model = PoseEstimationModel()
+model_folder = "mustard_003"
+state_dict = torch.load(join("/home/csrobot/synth_perception/runs/pose_estimation",model_folder,"model_epoch_25.pth"), weights_only=True)
+pose_model.load_state_dict(state_dict)
+print('Weights loaded successfully!')
+
+exit()
 # Initialize the video capture (camera device 0)
 cap = cv2.VideoCapture(0)
 
@@ -25,11 +34,11 @@ try:
             print("Failed to grab frame")
             break
 
-        # Start time for processing 
+        # Start time for processing
         start_time = time.time()
 
         # Perform object detection
-        results = model(frame)
+        results = detect_model(frame)
 
         # Draw the detections on the frame
         annotated_frame = results[0].plot()  # Automatically draws boxes and labels
@@ -48,13 +57,6 @@ try:
         text_y = frame.shape[0] - 10
         cv2.putText(annotated_frame, text, (text_x+2, text_y+2), font, font_scale, (0,0,0), thickness)
         cv2.putText(annotated_frame, text, (text_x, text_y), font, font_scale, color, thickness)
-
-        # Rescale the image for display
-        scale_factor = 1.5
-        height, width = annotated_frame.shape[:2]
-        new_width = int(width * scale_factor)  
-        new_height = int(height * scale_factor) 
-        annotated_frame = cv2.resize(annotated_frame, (new_width, new_height))
 
         # Display the resulting frame
         cv2.imshow('YOLO Live Detection', annotated_frame)

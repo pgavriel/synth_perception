@@ -7,7 +7,8 @@ import random
 import cv2
 from typing import List
 from pathlib import Path
-from test_yolo import make_img_square
+from utilities import make_img_square
+from itertools import chain
 
 class UnityToPoseEstimationDataset:
     def __init__(self, input_dirs: List[str], output_dir: str, validation_split = 0.15, crop_size=96, verbose=True):
@@ -243,7 +244,10 @@ class UnityToPoseEstimationDataset:
                     outvec_rot = bb3["rotation"]
 
                     # Write data to txt file
-                    data_str = f"{category_id},{uvwh},{outvec_size},{outvec_translate},{outvec_rot}"
+                    objects = [category_id, uvwh, outvec_size, outvec_translate, outvec_rot]
+                    flattened = list(chain.from_iterable(obj if isinstance(obj, list) else [obj] for obj in objects))
+                    data_str = ','.join(map(str, flattened))
+                    # data_str = f"{category_id},{uvwh},{outvec_size},{outvec_translate},{outvec_rot}"
                     label_dest = join(self.label_dir,set_choice,f"{id_str}.txt")
                     with open(label_dest, 'w') as lf:
                         lf.write(f"{data_str}")
@@ -278,11 +282,12 @@ class UnityToPoseEstimationDataset:
 
         print("Output directory is valid and contains data.")
 
+
 # Example usage
 if __name__ == "__main__":
     unity_root = "/home/csrobot/Unity/SynthData/PoseTesting"
     # unity_datasets = ['engine_fruit' ,'engine_nerve' , 'negative_fruit', 'negative_nerve']
-    unity_datasets = ['mini_test']
+    unity_datasets = ['mustard_nerve','mustard_fruit']
     convertion_list = [join(unity_root,dataset) for dataset in unity_datasets]
 
     output_root = "/home/csrobot/synth_perception/data/pose-estimation"

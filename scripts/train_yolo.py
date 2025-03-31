@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     # Train the model
     
-    dataset_name = "fetchit"
+    dataset_name = "mustard_detec"
     dataset_file = join(data_folder,dataset_name,"data.yaml")
     print("DATA", "FOUND" if isfile(join(dataset_file)) else "NOT FOUND")
     # dataset_file = "../data/test/data.yaml"

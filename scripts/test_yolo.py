@@ -2,34 +2,7 @@ from ultralytics import YOLO, settings
 import cv2
 from os.path import join, isfile
 import os 
-
-def make_img_square(img, size=96, verbose=False):
-    #TODO: Implement padding with noise rather than flat color
-    #TODO: Implement options for resize interpolation
-
-    h,w,_ = img.shape
-    if verbose: print(f"Passed Image Shape: {img.shape}")
-   
-    # Determine padding for height and width
-    pad_top = pad_bottom = (max(h, w) - h) // 2
-    pad_left = pad_right = (max(h, w) - w) // 2
-    
-    # If the difference is odd, add an extra pixel of padding to the bottom/right
-    pad_bottom += (max(h, w) - h) % 2
-    pad_right += (max(h, w) - w) % 2
-
-    # Pad the image with a solid color
-    pad_color = (0,0,0)
-    square_img = cv2.copyMakeBorder(
-        img, pad_top, pad_bottom, pad_left, pad_right,
-        cv2.BORDER_CONSTANT, value=pad_color
-    )   
-
-    # Resize 
-    resized_image = cv2.resize(square_img, (size, size))
-    
-    return resized_image
-
+from utilities import make_img_square
 
 def get_image_paths(directory):
     """Returns a list of image paths found inside directory."""
@@ -46,19 +19,20 @@ def get_image_paths(directory):
     return image_paths
 
 if __name__ == "__main__":
-    save_images = False
-    output_dir = '/home/csrobot/images/yolo_results'
+    save_images = True
+    output_dir = '/home/csrobot/Pictures/yolo_results'
     os.makedirs(output_dir, exist_ok=True)
 
-    visualize_images = False
-    delay_ms = 500 # 0 to wait indefinitely for key input on each image
+    visualize_images = True
+    delay_ms = 200 # 0 to wait indefinitely for key input on each image
 
     # Print Debug output
     verbose = True
-    get_crops = True
+    get_crops = False
 
     # Load a model 
-    model_folder = "train4"
+    print("Loading Model...")
+    model_folder = "train7"
     model_path = join("/home/csrobot/synth_perception/runs/detect",model_folder,"weights/best.pt")
     model = YOLO(model_path) # give path to .pt file
 
@@ -69,13 +43,15 @@ if __name__ == "__main__":
     min_conf = 0.5 # default: 0.25
     iou = 0.5 # default: 0.7 (lower numbers prevent prediction overlapping)
     visualize = False # default: False (saves a bunch of images)
-    imgsz = 1920 # default: 640 (width)
+    imgsz = 640 # default: 640 (width)
     
     # Run inference with the trained YOLO model
     # Get a list of image paths to test the model on 
-    image_list = get_image_paths("/home/csrobot/ns-data/engine-18/DSLR/")
+    image_list = get_image_paths("/home/csrobot/Pictures/collected")
     image_list = sorted(image_list)
-    image_list = ["/home/csrobot/synth_perception/engine_test.png"]
+    image_list = [image_list[1]]
+    # image_list = ["/home/csrobot/synth_perception/engine_test.png"]
+    print(f"Found {len(image_list)} images...")
     headers = ["LABEL","CONF","BOX (XYWH)","BOX (XYWHN)"]
     for c, img_path in enumerate(image_list, start=1):
         img = img = cv2.imread(img_path)
