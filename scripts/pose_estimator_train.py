@@ -16,23 +16,46 @@ import utilities as util
 def train(model, train_loader, val_loader, criterion, optimizer, device, num_epochs, output_dir):
     model.to(device)
     train_losses, val_losses = [], []
+    size_losses, tran_losses, rot_losses = [], [], []
+    size_loss_weight = 1.0
+    tran_loss_weight = 1.0
+    rot_loss_weight = 5.0
 
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
+        running_size_loss = 0.0
+        running_tran_loss = 0.0 
+        running_rot_loss = 0.0
+
+        # if epoch % 5 == 0:
+        #     tran_loss_weight = 1.0
+        #     rot_loss_weight = 0.0
+        # else:
+        #     tran_loss_weight = 0.0
+        #     rot_loss_weight = 5.0
 
         for images, vectors, labels in train_loader:
             images, vectors, labels = images.to(device), vectors.to(device), labels.to(device)
             optimizer.zero_grad()
             # print(f"[Img: {images.type} {images.shape}][Vector: {vectors.type} {vectors.shape}]")
             outputs = model(images, vectors)
-            loss = criterion(outputs, labels)
+            size_loss = size_loss_weight * criterion(outputs[:,:3], labels[:,:3])
+            tran_loss = tran_loss_weight * criterion(outputs[:,3:6], labels[:,3:6])
+            rot_loss = rot_loss_weight * criterion(outputs[:,6:], labels[:,6:])
+            loss = size_loss + tran_loss + rot_loss
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
+            running_size_loss += size_loss.item()
+            running_tran_loss += tran_loss.item()
+            running_rot_loss += rot_loss.item()
 
         epoch_loss = running_loss / len(train_loader)
         train_losses.append(epoch_loss)
+        size_losses.append(running_size_loss / len(train_loader))
+        tran_losses.append(running_tran_loss / len(train_loader))
+        rot_losses.append(running_rot_loss / len(train_loader))
 
         # Validation phase
         model.eval()
@@ -41,7 +64,10 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
             for images, vectors, labels in val_loader:
                 images, vectors, labels = images.to(device), vectors.to(device), labels.to(device)
                 outputs = model(images, vectors)
-                loss = criterion(outputs, labels)
+                size_loss = size_loss_weight * criterion(outputs[:,:3], labels[:,:3])
+                tran_loss = tran_loss_weight * criterion(outputs[:,3:6], labels[:,3:6])
+                rot_loss = rot_loss_weight * criterion(outputs[:,6:], labels[:,6:])
+                loss = size_loss + tran_loss + rot_loss
                 val_loss += loss.item()
 
         val_loss /= len(val_loader)
@@ -55,6 +81,9 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
             print(f"[Saved Chekpoint] model_epoch_{epoch+1}.pth")
 
     # Plot training and validation loss
+    plt.plot(range(1, num_epochs + 1), size_losses, label='Size Loss')
+    plt.plot(range(1, num_epochs + 1), tran_losses, label='Translation Loss')
+    plt.plot(range(1, num_epochs + 1), rot_losses, label='Rotation Loss')
     plt.plot(range(1, num_epochs + 1), train_losses, label='Train Loss')
     plt.plot(range(1, num_epochs + 1), val_losses, label='Val Loss')
     plt.xlabel('Epochs')
@@ -68,14 +97,14 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, num_epo
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     batch_size = 32
-    num_epochs = 25
+    num_epochs = 100
     learning_rate = 0.001
     output_root = '/home/csrobot/synth_perception/runs/pose_estimation'
     prefix = "mustard"
     output_dir = util.create_incremental_dir(output_root,prefix)
     print(f"OUTPUT DIRECTORY: {output_dir}")
 
-    data_root = "/home/csrobot/synth_perception/data/pose-estimation/test"
+    data_root = "/home/csrobot/synth_perception/data/pose-estimation/test2"
     train_dataset = PoseDataLoader(join(data_root,"images/train"), join(data_root,"labels/train"))
     val_dataset = PoseDataLoader(join(data_root,"images/val"), join(data_root,"labels/val"))
     # print(train_dataset[0])

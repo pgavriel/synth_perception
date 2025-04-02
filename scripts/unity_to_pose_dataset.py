@@ -287,11 +287,11 @@ class UnityToPoseEstimationDataset:
 if __name__ == "__main__":
     unity_root = "/home/csrobot/Unity/SynthData/PoseTesting"
     # unity_datasets = ['engine_fruit' ,'engine_nerve' , 'negative_fruit', 'negative_nerve']
-    unity_datasets = ['mustard_nerve','mustard_fruit']
+    unity_datasets = ['mustard_nerve','mustard_fruit','mustard_big']
     convertion_list = [join(unity_root,dataset) for dataset in unity_datasets]
 
     output_root = "/home/csrobot/synth_perception/data/pose-estimation"
-    output_dataset_name = "test"
+    output_dataset_name = "test2"
     validation_split = 0.15
     crop_size = 96
     verbose = True

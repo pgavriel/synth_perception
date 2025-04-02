@@ -105,30 +105,35 @@ def quat_is_normalized(quaternion, tol=1e-6):
     print(f"Quat is normalized: {is_norm}")
     return is_norm
 
-def draw_3d_bounding_box(image, translation, size, rotation,fl=6172, verbose=False):
+def draw_3d_bounding_box(image, translation, size, rotation, fl=6172, color=(0,255,0), verbose=False):
     # Create 8 corner points of the bounding box
-    l, w, h = size
+    if size is not None:
+        l, w, h = size
+    else: # Have some default cube size when we want to ignore model size output
+        l, w, h = (0.05,0.05,0.05)
     corners = np.array([
-        [-l / 2, -w / 2, -h / 2],
-        [l / 2, -w / 2, -h / 2],
-        [l / 2, w / 2, -h / 2],
-        [-l / 2, w / 2, -h / 2],
-        [-l / 2, -w / 2, h / 2],
-        [l / 2, -w / 2, h / 2],
-        [l / 2, w / 2, h / 2],
-        [-l / 2, w / 2, h / 2]
+        [-l / 2, -w / 2, -h / 2], # -, -, -
+        [l / 2, -w / 2, -h / 2],  # +, -, -
+        [l / 2, w / 2, -h / 2],   # +, +, -
+        [-l / 2, w / 2, -h / 2],  # -, +, -
+        [-l / 2, -w / 2, h / 2],  # -, -, +
+        [l / 2, -w / 2, h / 2],   # +, -, +
+        [l / 2, w / 2, h / 2],    # +, +, +
+        [-l / 2, w / 2, h / 2]    # -, +, +
     ])
 
     # Apply rotation
     rotation_corrected = [rotation[0], -rotation[1], -rotation[2], -rotation[3]]  # Flip x, y, z components
-    norm = quat_is_normalized(rotation
-                              )
+    norm = quat_is_normalized(rotation)
     r = R.from_quat(rotation)  # Rotation as [x, y, z, w]
     # r = R.from_quat(rotation_corrected)  # Rotation as [-x, -y, -z, -w]
     corners_rotated = r.apply(corners)
 
     # Apply translation
     corners_transformed = corners_rotated + translation
+    # Convert from Unity coordinates (Y up) to OpenCV (Y down)
+    corners_transformed[:, 1] *= -1
+
 
     # Project to 2D assuming simple pinhole camera model
     # For simplicity, use a basic camera intrinsic matrix
@@ -156,11 +161,32 @@ def draw_3d_bounding_box(image, translation, size, rotation,fl=6172, verbose=Fal
         (4, 5), (5, 6), (6, 7), (7, 4),  # Top face
         (0, 4), (1, 5), (2, 6), (3, 7)   # Vertical edges
     ]
+    ax_x = (0,1)
+    ax_y = (1,2)
+    ax_z = (1,5)
+    draw_edges = True
+    draw_corners = True
+
     # image = cv2.flip(image, 0)
-    for start, end in edges:
-        pt1 = tuple(points_2d[start])
-        pt2 = tuple(points_2d[end])
-        cv2.line(image, pt1, pt2, (0, 255, 0), 2)
+    if draw_edges:
+        for start, end in edges:
+            pt1 = tuple(points_2d[start])
+            pt2 = tuple(points_2d[end])
+            cv2.line(image, pt1, pt2, color, 2)
+            if start == ax_x[0] and end == ax_x[1]:
+                cv2.line(image, pt1, pt2, (0,0,250), 2)
+            if start == ax_y[0] and end == ax_y[1]:
+                cv2.line(image, pt1, pt2, (0,250,0), 2)
+            if start == ax_z[0] and end == ax_z[1]:
+                cv2.line(image, pt1, pt2, (250,0,0), 2)
+    if draw_corners:
+        for i,p in enumerate(points_2d,start=0):
+            c_val = 255 - (50)*(i%4)
+            if i < 4:
+                image = cv2.circle(image,p,5,(0,0,c_val),-1)
+            else:
+                image = cv2.circle(image,p,5,(c_val,0,0),-1)    
+                
     # image = cv2.flip(image, 0)
     return image
 

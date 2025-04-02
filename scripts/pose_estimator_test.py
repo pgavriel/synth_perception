@@ -3,16 +3,22 @@ import cv2
 import torch
 from os.path import join, isfile
 import os 
+import json
 from utilities import make_img_square, get_uvwh, get_image_paths, draw_3d_bounding_box, get_files
 from pose_estimator_model import PoseEstimationModel
 
 if __name__ == "__main__":
     save_images = True
-    output_dir = '/home/csrobot/Pictures/yolo_results'
+    output_dir = '/home/csrobot/Pictures/yolo_results_j'
     os.makedirs(output_dir, exist_ok=True)
 
     visualize_images = True
     delay_ms = 200 # 0 to wait indefinitely for key input on each image
+
+    # If we're testing on synthetic data, try to visualize the GT 3DBB
+    visualize_synth_gt = True 
+    # draw_corners = True
+    # draw_edges = False
 
     # Print Debug output
     verbose = False
@@ -20,9 +26,9 @@ if __name__ == "__main__":
 
     # Load a detection model 
     print("Loading Model...")
-    model_folder = "train7"
-    model_path = join("/home/csrobot/synth_perception/runs/detect",model_folder,"weights/best.pt")
-    model = YOLO(model_path) # give path to .pt file
+    detect_model_folder = "train7"
+    detect_model_path = join("/home/csrobot/synth_perception/runs/detect",detect_model_folder,"weights/best.pt")
+    detect_model = YOLO(detect_model_path) # give path to .pt file
 
     # Display model information (optional)
     # model.info()
@@ -35,8 +41,8 @@ if __name__ == "__main__":
     
     # Load the pose estimator model
     pose_model = PoseEstimationModel()
-    model_folder = "mustard_005"
-    state_dict = torch.load(join("/home/csrobot/synth_perception/runs/pose_estimation",model_folder,"model_epoch_25.pth"), weights_only=True)
+    model_folder = "mustard_013"
+    state_dict = torch.load(join("/home/csrobot/synth_perception/runs/pose_estimation",model_folder,"model_epoch_100.pth"), weights_only=True)
     pose_model.load_state_dict(state_dict)
     pose_model.eval()
     print('Pose Estimation model loaded successfully!')
@@ -46,22 +52,56 @@ if __name__ == "__main__":
     # Get a list of image paths to test the model on 
     # image_list = get_image_paths("/home/csrobot/Pictures/mustard_test")
     # image_list = sorted(image_list)
-    image_list = get_files("/home/csrobot/Unity/SynthData/PoseTesting/mustard_testing")
-    # image_list = [image_list[3]]
+    image_list = get_files("/home/csrobot/Unity/SynthData/PoseTesting/mustard_nerve")
+    image_list = image_list[:50]
     # image_list = [image_list[1]]
     print(f"Found {len(image_list)} images...")
     headers = ["LABEL","CONF","BOX (XYWH)","BOX (XYWHN)"]
+    # For each test image...
     for c, img_path in enumerate(image_list, start=1):
-        img = img = cv2.imread(img_path)
+
+        # Attempt to load image with opencv
+        img = cv2.imread(img_path)
         if img is None:
             print(f"Error: Could not load {img_path}")
             continue
-        results = model(img, imgsz=imgsz, visualize=visualize, conf=min_conf, iou=iou)
         
-        for result in results:   
+        # TODO: Load ground truth information for synthetic data image, and draw the ground truth 3dbb
+        if visualize_synth_gt:
+            # Making a few assumptions about file structure, should be direct output from Unity
+            annotation_file = join(os.path.dirname(img_path),"step0.frame_data.json")
+            if os.path.exists(annotation_file):
+                with open(annotation_file, 'r') as f:
+                    label_json = json.load(f)
+                annotations = label_json["captures"][0]["annotations"]
+                bb_3d = None
+                for ann in annotations:
+                    if ann["id"] == "bounding box 3D":
+                        if "values" in ann:
+                            bb_3d = ann["values"]
+                            for bbox in bb_3d:
+                                translation = bbox["translation"]
+                                size = bbox["size"]
+                                rotation = bbox["rotation"]  # [x, y, z, w] quaternion
+                                img = draw_3d_bounding_box(img, translation, size, rotation,fl=6172, color=(255,255,255))
+                        else:
+                            bb_3d = None
+                        print(f"GROUND TRUTH 3DBB: {bb_3d}")
+                # Save image before passing through model?
+                save_file = join(output_dir,f"result{c:03d}.jpg")
+                cv2.imwrite(save_file,img)
+                print(f"Result Saved: {save_file}")
+
+        # If successful, pass the image through the detection model (returns a list)
+        results = detect_model(img, imgsz=imgsz, visualize=visualize, conf=min_conf, iou=iou)
+
+        # For each result (should be length 1 for evaluating a single image)
+        for result in results:  
+            # If there are detection boxes associated with result... 
             # print(f"Classes: {result.names}")
             res = result.boxes.cpu().numpy()
             if len(res) > 0:
+                # Print out some info about the detection bounding box
                 print(f"Original Image Size (WxH): {res.orig_shape[1]} x {res.orig_shape[0]}")
                 print(f"[{headers[0].center(10)}][{headers[1].center(10)}][{headers[2].center(49)}][{headers[3].center(49)}]")
                 crops = []
@@ -69,7 +109,8 @@ if __name__ == "__main__":
                     conf = f"{d[4]:.3f}"
                     print(f"[{result.names[d[5]].center(10)}][{conf.center(10)}][{xywh}][{xywhn}]")
                     print(f"D: {d}")
-                    pose_input_vector = get_uvwh(img,d[5],xyxy)
+                    FOCAL_LENGTH = 6172
+                    pose_input_vector = get_uvwh(img,d[5],xyxy,FOCAL_LENGTH)
                     x1, y1, x2, y2 = map(int, xyxy)
                     pose_input_crop = make_img_square(result.orig_img[y1:y2,x1:x2])
                     # print(f"[Img: {type(pose_input_crop)} {pose_input_crop.shape}][Vector: {type(pose_input_vector)} {pose_input_vector.shape}]")
@@ -85,8 +126,9 @@ if __name__ == "__main__":
                     # pose_outputs = model(pose_input_crop, pose_input_vector)
                     # print(f"Model Output: {output}")
                     print(f"Model Output: \n[ SIZE ]{out_size}\n[ TRAN ]{out_tran}\n[ ROT  ]{out_rot}")
-                    FOCAL_LENGTH = 610
-                    pose_image = draw_3d_bounding_box(img, out_size, out_tran, out_rot,FOCAL_LENGTH)
+                    
+                    # pose_image = draw_3d_bounding_box(img, out_size, out_tran, out_rot,FOCAL_LENGTH)
+                    pose_image = draw_3d_bounding_box(img, out_tran, out_size, out_rot,FOCAL_LENGTH)
                     crops.append(make_img_square(result.orig_img[y1:y2,x1:x2]))
                     window_name = str(len(crops))
                     cv2.imshow(window_name, crops[-1])
@@ -105,7 +147,7 @@ if __name__ == "__main__":
             #         save_file = join(output_dir,f"result{c:03d}.jpg")
             #         result.save(filename=save_file)  
             #         print(f"Result Saved: {save_file}")
-            
+                
             # Visualize the detection
             if visualize_images:
                 res_img = result.plot()  # This plots the detections on the image
