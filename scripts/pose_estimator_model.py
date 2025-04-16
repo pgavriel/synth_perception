@@ -5,11 +5,15 @@ from torch.utils.data import Dataset, DataLoader
 import os
 import cv2
 import numpy as np
+from utilities import canonicalize_quaternion
 
 # Define the dual-input pose estimation model
 class PoseEstimationModel(nn.Module):
     def __init__(self):
         super(PoseEstimationModel, self).__init__()
+
+        IMG_BRANCH_OUT_SIZE = 256
+        VEC_BRANCH_OUT_SIZE = 128
 
         # Image branch: Convolutional layers to process 96x96x3 images
         self.conv_layers = nn.Sequential(
@@ -22,11 +26,19 @@ class PoseEstimationModel(nn.Module):
             nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            # nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            # nn.ReLU(),
+            # nn.MaxPool2d(2),
         )
         
         # Flattened image vector size after convolutions (96x96 -> 12x12 -> 64*12*12)
         self.fc_image = nn.Sequential(
-            nn.Linear(64 * 12 * 12, 128),
+            # nn.Linear(64 * 12 * 12, 128),
+            nn.Linear(128*6*6, IMG_BRANCH_OUT_SIZE),
+            # nn.Linear(256*3*3, IMG_BRANCH_OUT_SIZE),
             nn.ReLU(),
         )
 
@@ -34,13 +46,13 @@ class PoseEstimationModel(nn.Module):
         self.fc_vector = nn.Sequential(
             nn.Linear(5, 64),
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(64, VEC_BRANCH_OUT_SIZE),
             nn.ReLU(),
         )
 
         # Combined branch
         self.fc_combined = nn.Sequential(
-            nn.Linear(128 + 128, 256),
+            nn.Linear(VEC_BRANCH_OUT_SIZE + IMG_BRANCH_OUT_SIZE, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -63,12 +75,25 @@ class PoseEstimationModel(nn.Module):
         # Split the output: first 6 values (e.g., translation + other params), last 4 for quaternion
         non_quat, quat = output[:, :6], output[:, 6:]
         # Normalize quaternion to ensure it's a unit quaternion
-        quat = quat / torch.norm(quat, dim=1, keepdim=True)
+        # quat = quat / torch.norm(quat, dim=1, keepdim=True)
+        # # Canonicalize Quaternion
+        # quat = canonicalize_quaternion(quat.detach().numpy())
+        quat = self._normalize_and_canonicalize_quaternion(quat)
         # Concatenate back together
         output = torch.cat((non_quat, quat), dim=1)
 
         return output
-
+    
+    @staticmethod
+    def _normalize_and_canonicalize_quaternion(q):
+        """
+        Ensures q is a unit quaternion and uses a canonical form (q[0] >= 0).
+        q: Tensor of shape [batch_size, 4]
+        """
+        q = F.normalize(q, p=2, dim=1)
+        sign = torch.where(q[:, 0:1] < 0, -1.0, 1.0)  # shape: [batch_size, 1]
+        return q * sign
+    
 # Dataset class for loading images and labels
 class PoseDataLoader(Dataset):
     def __init__(self, image_dir, label_dir):
@@ -83,7 +108,7 @@ class PoseDataLoader(Dataset):
         # Load image
         img_path = os.path.join(self.image_dir, self.image_filenames[idx])
         image = cv2.imread(img_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         # image = cv2.resize(image, (96, 96))
         image = torch.tensor(image, dtype=torch.float32).permute(2, 0, 1) / 255.0
 

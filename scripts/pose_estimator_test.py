@@ -9,10 +9,10 @@ from pose_estimator_model import PoseEstimationModel
 
 if __name__ == "__main__":
     save_images = True
-    output_dir = '/home/csrobot/Pictures/yolo_results_j'
+    output_dir = '/home/csrobot/Pictures/yolo_results_o'
     os.makedirs(output_dir, exist_ok=True)
 
-    visualize_images = True
+    visualize_images = False
     delay_ms = 200 # 0 to wait indefinitely for key input on each image
 
     # If we're testing on synthetic data, try to visualize the GT 3DBB
@@ -37,11 +37,11 @@ if __name__ == "__main__":
     min_conf = 0.5 # default: 0.25
     iou = 0.5 # default: 0.7 (lower numbers prevent prediction overlapping)
     visualize = False # default: False (saves a bunch of images)
-    imgsz = 1920 # default: 640 (width)
+    imgsz = 640 # default: 640 (width), 1920 on synth
     
     # Load the pose estimator model
     pose_model = PoseEstimationModel()
-    model_folder = "mustard_013"
+    model_folder = "mustard_034"
     state_dict = torch.load(join("/home/csrobot/synth_perception/runs/pose_estimation",model_folder,"model_epoch_100.pth"), weights_only=True)
     pose_model.load_state_dict(state_dict)
     pose_model.eval()
@@ -53,7 +53,8 @@ if __name__ == "__main__":
     # image_list = get_image_paths("/home/csrobot/Pictures/mustard_test")
     # image_list = sorted(image_list)
     image_list = get_files("/home/csrobot/Unity/SynthData/PoseTesting/mustard_nerve")
-    image_list = image_list[:50]
+    # image_list = get_files("/home/csrobot/Pictures/collected")
+    image_list = image_list[:25]
     # image_list = [image_list[1]]
     print(f"Found {len(image_list)} images...")
     headers = ["LABEL","CONF","BOX (XYWH)","BOX (XYWHN)"]
@@ -66,6 +67,10 @@ if __name__ == "__main__":
             print(f"Error: Could not load {img_path}")
             continue
         
+        # If successful, pass the image through the detection model (returns a list)
+        results = detect_model(img, imgsz=imgsz, visualize=visualize, conf=min_conf, iou=iou)
+
+
         # TODO: Load ground truth information for synthetic data image, and draw the ground truth 3dbb
         if visualize_synth_gt:
             # Making a few assumptions about file structure, should be direct output from Unity
@@ -92,9 +97,7 @@ if __name__ == "__main__":
                 cv2.imwrite(save_file,img)
                 print(f"Result Saved: {save_file}")
 
-        # If successful, pass the image through the detection model (returns a list)
-        results = detect_model(img, imgsz=imgsz, visualize=visualize, conf=min_conf, iou=iou)
-
+        
         # For each result (should be length 1 for evaluating a single image)
         for result in results:  
             # If there are detection boxes associated with result... 
@@ -109,7 +112,7 @@ if __name__ == "__main__":
                     conf = f"{d[4]:.3f}"
                     print(f"[{result.names[d[5]].center(10)}][{conf.center(10)}][{xywh}][{xywhn}]")
                     print(f"D: {d}")
-                    FOCAL_LENGTH = 6172
+                    FOCAL_LENGTH = 6172 #4000 #6172
                     pose_input_vector = get_uvwh(img,d[5],xyxy,FOCAL_LENGTH)
                     x1, y1, x2, y2 = map(int, xyxy)
                     pose_input_crop = make_img_square(result.orig_img[y1:y2,x1:x2])
@@ -131,9 +134,9 @@ if __name__ == "__main__":
                     pose_image = draw_3d_bounding_box(img, out_tran, out_size, out_rot,FOCAL_LENGTH)
                     crops.append(make_img_square(result.orig_img[y1:y2,x1:x2]))
                     window_name = str(len(crops))
-                    cv2.imshow(window_name, crops[-1])
+                    # cv2.imshow(window_name, crops[-1])
 
-                    cv2.imshow("Pose",pose_image)
+                    # cv2.imshow("Pose",pose_image)
                 # print(result.boxes.cpu().numpy())
                 # cv2.waitKey(0)
                 if save_images: # Save annotated image

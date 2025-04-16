@@ -7,7 +7,7 @@ import random
 import cv2
 from typing import List
 from pathlib import Path
-from utilities import make_img_square
+from utilities import make_img_square, canonicalize_quaternion, quat_is_normalized, get_subfolders
 from itertools import chain
 
 class UnityToPoseEstimationDataset:
@@ -240,8 +240,10 @@ class UnityToPoseEstimationDataset:
                     outvec_size = bb3["size"]
                     outvec_translate = bb3["translation"]
                     # Get Rotation Vector Quaternion
-                    #TODO: Implement Quaternion regularization to remove redundant poses
                     outvec_rot = bb3["rotation"]
+                    # Convert Rotation Quaternion to canonical form (Positive q0)
+                    outvec_rot = canonicalize_quaternion(outvec_rot,False)
+                    # is_norm = quat_is_normalized(outvec_rot)
 
                     # Write data to txt file
                     objects = [category_id, uvwh, outvec_size, outvec_translate, outvec_rot]
@@ -285,13 +287,15 @@ class UnityToPoseEstimationDataset:
 
 # Example usage
 if __name__ == "__main__":
-    unity_root = "/home/csrobot/Unity/SynthData/PoseTesting"
+    unity_root = "/home/csrobot/Unity/SynthData/PoseTesting/gear"
     # unity_datasets = ['engine_fruit' ,'engine_nerve' , 'negative_fruit', 'negative_nerve']
-    unity_datasets = ['mustard_nerve','mustard_fruit','mustard_big']
+    # unity_datasets = ['mustard_nerve','mustard_fruit','mustard_big']
+    # unity_datasets = ['mustard_nerve']
+    unity_datasets = get_subfolders("/home/csrobot/Unity/SynthData/PoseTesting/gear")
     convertion_list = [join(unity_root,dataset) for dataset in unity_datasets]
 
     output_root = "/home/csrobot/synth_perception/data/pose-estimation"
-    output_dataset_name = "test2"
+    output_dataset_name = "gear-pose1"
     validation_split = 0.15
     crop_size = 96
     verbose = True

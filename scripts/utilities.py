@@ -3,6 +3,28 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from pathlib import Path
+import datetime
+import json
+
+def timestamp(format="%y-%m-%d-%H-%M-%S"):
+    # Get the current time
+    now = datetime.datetime.now()
+    # Format the time string 
+    time_str = now.strftime(format)
+    return time_str
+
+def load_json(file,verbose=True):
+    # Load Object Size information
+    with open("object_sizes.json", "r") as f:
+        object_sizes = json.load(f)
+    if verbose:
+        print("Loaded JSON:")
+        print(json.dumps(object_sizes, indent=4))
+    return object_sizes
+
+# Get Object size vector or default if it's not found
+def get_size_vector(object_name, size_dict):
+    return size_dict.get(object_name, size_dict["default"])
 
 
 def create_incremental_dir(root, prefix="test", digits=3):
@@ -44,6 +66,10 @@ def get_files(search_dir, recursive=True, search_extensions=[".png", ".jpg", ".j
     found_files = [f for f in found_files if f.suffix.lower() in search_extensions]
 
     return found_files
+
+def get_subfolders(root_dir):
+    return [name for name in os.listdir(root_dir)
+            if os.path.isdir(os.path.join(root_dir, name))]
 
 def make_img_square(img, size=96, verbose=False):
     #TODO: Implement padding with noise rather than flat color
@@ -105,7 +131,14 @@ def quat_is_normalized(quaternion, tol=1e-6):
     print(f"Quat is normalized: {is_norm}")
     return is_norm
 
-def draw_3d_bounding_box(image, translation, size, rotation, fl=6172, color=(0,255,0), verbose=False):
+def canonicalize_quaternion(q, verbose=True):
+    q = np.asarray(q)
+    if q[0] < 0:
+        if verbose: print(f"CANONICALIZED: [{q}] -> [{-q}]")
+        q = -q
+    return list(q) 
+
+def draw_3d_bounding_box(image, translation, size, rotation, fl=6172, color=(255,50,150), verbose=False):
     # Create 8 corner points of the bounding box
     if size is not None:
         l, w, h = size
@@ -123,8 +156,9 @@ def draw_3d_bounding_box(image, translation, size, rotation, fl=6172, color=(0,2
     ])
 
     # Apply rotation
-    rotation_corrected = [rotation[0], -rotation[1], -rotation[2], -rotation[3]]  # Flip x, y, z components
+    # rotation_corrected = [rotation[0], -rotation[1], -rotation[2], -rotation[3]]  # Flip x, y, z components
     norm = quat_is_normalized(rotation)
+    rotation = canonicalize_quaternion(rotation)
     r = R.from_quat(rotation)  # Rotation as [x, y, z, w]
     # r = R.from_quat(rotation_corrected)  # Rotation as [-x, -y, -z, -w]
     corners_rotated = r.apply(corners)

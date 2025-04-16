@@ -7,6 +7,7 @@ import random
 import cv2
 from typing import List
 from pathlib import Path
+from utilities import get_subfolders
 
 class UnityToYOLOConverter:
     def __init__(self, input_dirs: List[str], output_dir: str, validation_split = 0.15, verbose=True):
@@ -232,13 +233,17 @@ class UnityToYOLOConverter:
 
 # Example usage
 if __name__ == "__main__":
-    unity_root = "/home/csrobot/Unity/SynthData/PoseTesting"
+    unity_root = "/home/csrobot/Unity/SynthData/PoseTesting/gear"
     # unity_datasets = ['engine_fruit' ,'engine_nerve' , 'negative_fruit', 'negative_nerve']
-    unity_datasets = ['mustard_nerve','mustard_fruit','negative_nerve','negative_fruit']
+    # unity_datasets = ['mustard_nerve','mustard_fruit','negative_nerve','negative_fruit']
+    unity_datasets = get_subfolders("/home/csrobot/Unity/SynthData/PoseTesting/gear")
+    unity_datasets += ["../negative_nerve", "../negative_fruit"]
+    print(unity_datasets)
     convertion_list = [join(unity_root,dataset) for dataset in unity_datasets]
 
+
     yolo_root = "/home/csrobot/synth_perception/data"
-    yolo_dataset_name = "mustard_detec"
+    yolo_dataset_name = "gear_detect"
     validation_split = 0.15
 
     verbose = False

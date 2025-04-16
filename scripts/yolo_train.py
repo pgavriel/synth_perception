@@ -4,7 +4,7 @@ from os.path import join, isfile
 # https://docs.ultralytics.com/modes/train/#train-settings 
 if __name__ == "__main__":
 
-    training_epochs = 100 # 100
+    training_epochs = 25 # 100
     # Print Settings
     data_folder = "/home/csrobot/synth_perception/data"
     settings.update({"datasets_dir": data_folder})
@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     # Train the model
     
-    dataset_name = "mustard_detec"
+    dataset_name = "gear_detect"
     dataset_file = join(data_folder,dataset_name,"data.yaml")
     print("DATA", "FOUND" if isfile(join(dataset_file)) else "NOT FOUND")
     # dataset_file = "../data/test/data.yaml"
