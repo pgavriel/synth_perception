@@ -1,5 +1,6 @@
 import os 
 import json
+import math
 
 def create_incremental_dir(root, prefix="test", digits=3):
     os.makedirs(root, exist_ok=True)  # Ensure root exists
@@ -16,8 +17,15 @@ def load_json_config(file):
         config = json.load(f)
 
     print("\nLoaded config:")
-    for k, v in config.items():
-        print(f"{k}: {v}")
+    # for k, v in config.items():
+    #     print(f"{k}: {v}")
+    print(json.dumps(config,sort_keys=False,indent=2))
     print("\n")
     
     return config
+
+def compute_plane_size(fov_deg, aspect_ratio, depth):
+    fov_rad = math.radians(fov_deg)
+    height = 2 * depth * math.tan(fov_rad / 2)
+    width = height * aspect_ratio
+    return width, height

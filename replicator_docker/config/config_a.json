@@ -2,19 +2,52 @@
     "output_root": "/home/ubuntu/output",
     "output_name": "test",
     "output_size": [1024, 640],
-    
+    "model_root": "/home/ubuntu/models",
+
     "camera": {
       "position": [0, 0, 0],
-      "look_at": [0, 0, 10]
+      "look_at": [0, 0, 1000],
+      "focal_length": 24.0,
+      "focus_distance": 2000.0
     },
 
     "light": {
       "type": "distant",
+      "position": [0, 1000, -100],
       "rotation": [45, 0, 0],
-      "intensity": 3000
+      "intensity": [3000,3000]
     },
 
-    "num_frames": 10,
+    "num_frames": 9,
+
+    "background": {
+        "depth": 2000,
+        "density": 0.05,
+        "scale": 11,
+        "show_plane": true,
+        "check_collisions": 0,
+        "object_count": 20,
+        "object_scale": 3.0,
+        "dim_scale_bounds": [0.5,1.5],
+        "objects": {
+            "cone": true,
+            "cube": true,
+            "cylinder": true,
+            "sphere": true,
+            "torus": true
+        }
+    },
+
+    "foreground": {
+        "objects": ["engine"],
+        "show_bounds": false,
+        "min_dist": 500,
+        "max_dist": 1500,
+        "scale_z": 10,
+        "scale_xy": 2.5,
+        "width": 600,
+        "height": 300
+    },
 
     "output_types": {
         "rgb": true,
@@ -26,7 +59,7 @@
         "distance_to_image_plane": false,
         "bounding_box_3d": false,
         "occlusion": false,
-        "normals": false
+        "normals": true
     }
   }
   

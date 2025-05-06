@@ -6,6 +6,8 @@ docker run --gpus all --entrypoint /bin/bash -it \
     -v "/home/csrobot/synth_perception/replicator_docker/scripts:/home/ubuntu/scripts" \
     -v "/home/csrobot/synth_perception/replicator_docker/output:/home/ubuntu/output" \
     -v "/home/csrobot/synth_perception/replicator_docker/config:/home/ubuntu/config" \
+    -v "/home/csrobot/Omniverse/Models:/home/ubuntu/models" \
+    -v "/home/csrobot/Omniverse/Materials/vMaterials_2:/home/ubuntu/materials" \
     ov-synthetic-data-generation-startup:v1
 
 # Original image name    
