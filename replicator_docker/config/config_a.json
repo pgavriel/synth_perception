@@ -1,8 +1,10 @@
 {
     "output_root": "/home/ubuntu/output",
     "output_name": "test",
-    "output_size": [1024, 640],
-    "model_root": "/home/ubuntu/models",
+    "output_size": [1920, 1080],
+
+    "num_frames": 100,
+    "num_subframes":16,
 
     "camera": {
       "position": [0, 0, 0],
@@ -12,33 +14,47 @@
     },
 
     "light": {
+      "num_lights": 2,
       "type": "distant",
-      "position": [0, 1000, -100],
-      "rotation": [45, 0, 0],
-      "intensity": [3000,3000]
+      "xy_range": [-2000,2000],
+      "z_range": [-100,-100],
+      "intensity": [50,1000],
+      "exposure": [0.1, 1],
+      "randomize_color": true,
+      "r_range": [0,1],
+      "g_range": [0,1],
+      "b_range": [0,1]
     },
-
-    "num_frames": 9,
 
     "background": {
         "depth": 2000,
         "density": 0.05,
-        "scale": 11,
+        "scale": 11.5,
         "show_plane": true,
+        "spawn_objects": true,
         "check_collisions": 0,
-        "object_count": 20,
-        "object_scale": 3.0,
-        "dim_scale_bounds": [0.5,1.5],
+        "object_count": 50,
+        "object_scale": [1,3],
+        "dim_scale_bounds": [0.75,1.5],
         "objects": {
             "cone": true,
             "cube": true,
             "cylinder": true,
             "sphere": true,
             "torus": true
+        },
+        "materials": {
+            "root": "/home/ubuntu/materials",
+            "include_folders": ["NERVE","Concrete","Wood","Ground"],
+            "variants": 2,
+            "roughness_range": [0, 1],
+            "metallic_range": [0, 1],
+            "specular_range": [0, 1]
         }
     },
 
     "foreground": {
+        "model_root": "/home/ubuntu/models",
         "objects": ["engine"],
         "show_bounds": false,
         "min_dist": 500,
@@ -59,7 +75,7 @@
         "distance_to_image_plane": false,
         "bounding_box_3d": false,
         "occlusion": false,
-        "normals": true
+        "normals": false
     }
   }
   
