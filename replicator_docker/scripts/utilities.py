@@ -15,15 +15,14 @@ def create_incremental_dir(root, prefix="test", digits=3):
             return new_dir
         i += 1
 
-def load_json_config(file):
+def load_json_config(file, verbose=False):
     with open(file, "r") as f:
         config = json.load(f)
 
-    print("\nLoaded config:")
-    # for k, v in config.items():
-    #     print(f"{k}: {v}")
-    print(json.dumps(config,sort_keys=False,indent=2))
-    print("\n")
+    if verbose:
+        print("\nLoaded config:")
+        print(json.dumps(config,sort_keys=False,indent=2))
+        print("\n")
     
     return config
 
