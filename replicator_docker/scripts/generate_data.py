@@ -3,6 +3,7 @@ import omni.replicator.core as rep
 import os.path
 from os.path import join, dirname, basename
 import sys
+import math
 from math import ceil
 import random
 
@@ -15,6 +16,7 @@ def create_camera(config):
     camera_lookat = tuple(config["look_at"])
 
     camera = rep.create.camera(
+        name="MainCamera",
         position=camera_position,
         look_at=camera_lookat,
         focal_length=config["focal_length"],
@@ -40,33 +42,6 @@ def create_lighting(config):
         lights.append(light)
     return lights
 
-
-# def get_foreground_bound(config):
-#     aspect = config["output_size"][0]/config["output_size"][1]
-
-#     config = config["foreground"]
-#     depth = config["max_dist"] - config["min_dist"]
-#     center_z = (config["max_dist"]+config["min_dist"])/2
-#     position = (0,0,center_z)
-#     scale = (config["scale_xy"]*aspect,config["scale_xy"],config["scale_z"])
-#     # size = (config["width"],config["height"],depth)
-#     size = (config["height"]*aspect,config["height"],depth)
-#     visible = config["show_bounds"]
-#     # Define Scatter volume
-#     sample_volume = rep.create.cube(
-#         position=position,
-#         scale=scale,
-#         visible=config["show_bounds"]
-#     )
-#     # with sample_volume:
-#     #     rep.modify.pose(size=size)
-#     print(f"Foreground Bound (Cube):\
-#           \n\tPosition: {position}\
-#           \n\tScale: {scale}\
-#           \n\tSize: {size}\
-#           \n\tVisible: {visible}")
-
-#     return sample_volume
 
 def get_background_plane(config):
     aspect = config["output_size"][0]/config["output_size"][1]
@@ -191,38 +166,6 @@ def load_diffuse_materials(config, verbose=True):
 
     return rep.create.group(materials)
 
-# def load_mdl_materials(config, verbose=True):
-#     """
-#     Recursively search for *.mdl files in selected subdirectories under root_dir,
-#     and return the list of materials.
-
-#     Args:
-#         config (dict): Expects a 'root' directory, and 'include_folders' list of subfolders
-#         verbose (bool): Whether to print status messages.
-
-#     Returns:
-#         list: List of rep material objects created from diffuse textures.
-#     """
-#     materials = []
-#     root_dir = config["root"]
-#     subdirs = config["include_folders"]
-
-#     for subdir in subdirs:
-#         full_path = os.path.join(root_dir, subdir)
-#         if verbose:
-#             print(f"Searching in: {full_path}")
-#         for dirpath, _, filenames in os.walk(full_path):
-#             for file in filenames:
-#                 if file.endswith(".mdl"):
-#                     material_path = os.path.join(dirpath, file)
-#                     materials.append(material_path)
-
-#     if verbose:
-#         print(f"Total materials created: {len(materials)}")
-#         for m in materials:
-#             print(f" > {m}")
-
-#     return rep.create.group(materials)
     
 def create_randomized_material(config, diff_texture_path, rough_texture_path=None):
     roughness = random.uniform(config["roughness_range"][0], config["roughness_range"][1]) # Should be bounded [0,1]
@@ -242,6 +185,7 @@ def create_randomized_material(config, diff_texture_path, rough_texture_path=Non
 
 def create_foreground_objects(config):
     # Expects a dictionary of objects of the form "USD File: Class Label"
+    aspect = config["output_size"][0]/config["output_size"][1]
     objects = []
     config = config["foreground"]
     n = config["object_count"]
@@ -259,11 +203,26 @@ def create_foreground_objects(config):
                                     count=1)
             with usd_model:
                 rep.modify.pose(
-                    position=(0,0,1000),
+                    position=tuple(config["default_pos"]),
+                    rotation=tuple(config["default_rot"]),
                     scale = config["default_scale"]
                 )
 
             objects.append(usd_model)
+        elif choice == "Plane":
+            plane = rep.create.plane(
+                position=tuple(config["default_pos"]),
+                rotation=tuple(config["default_rot"]),
+                scale=(config["default_scale"]*aspect,config["default_scale"],config["default_scale"])
+            )
+            objects.append(plane)
+        elif choice == "Sphere":
+            plane = rep.create.sphere(
+                position=tuple(config["default_pos"]),
+                rotation=tuple(config["default_rot"]),
+                scale=(config["default_scale"])
+            )
+            objects.append(plane)
         else:
             print(f"ERROR: Failed to find model")
             model_folder = config["model_root"]
@@ -273,7 +232,33 @@ def create_foreground_objects(config):
             for m in models:
                 print(f"> {m}")
             return None
-    return rep.create.group(objects)
+    return objects
+
+def get_random_foreground_position(config,mod_size=True):
+    aspect_ratio = config["output_size"][0]/config["output_size"][1]
+    fc = config["foreground"]
+    vfov_deg = fc["spawn_vfov"]
+    z_pos = random.uniform(fc["z_range"][0],fc["z_range"][1])
+    # z_pos = rep.distribution.uniform(fc["z_range"][0],fc["z_range"][1]).get_output()
+    # util.print_object_info(z_pos)
+
+    vfov_rad = math.radians(vfov_deg)
+    
+    # Height at depth z
+    y_bound = math.tan(vfov_rad / 2) * z_pos
+    # y_pos = random.uniform(-y_bound,y_bound)
+
+    # Width = height * aspect
+    x_bound = y_bound * aspect_ratio
+    # x_pos = random.uniform(-x_bound,x_bound)
+
+    position = rep.distribution.uniform((-x_bound,-y_bound,z_pos),(x_bound,y_bound,z_pos))
+    size = (2*x_bound,2*y_bound,2*y_bound)
+    # print(f"POS: {position} - SIZE BOUNDS: {size}")
+
+    return rep.modify.pose(position=position)
+    # return position
+rep.randomizer.register(get_random_foreground_position)
 
 # default_config_dir = "/home/ubuntu/config"
 # default_config = "config_a.json"
@@ -304,6 +289,9 @@ def run_data_generation_scenario(config_path):
 
         # Create Camera
         camera = create_camera(config["camera"])
+        camera_prim = rep.get.prims(path_pattern="(.*?)") 
+        util.print_object_info(camera._get_prims())
+        print(camera._get_prims())
 
         # Output render size
         render_product = rep.create.render_product(camera, tuple(config["output_size"]))
@@ -365,18 +353,33 @@ def run_data_generation_scenario(config_path):
                     )
 
             # RANDOMIZE FOREGROUND OBJECTS ========== ========== ========== ========== 
-            with foreground_objects:
+            # with foreground_objects:
                 # Scatter was not working with loaded USD models
                 # rep.randomizer.scatter_3d(spawn_volume)
                 # rep.randomizer.scatter_2d(plane)
+                # position,size = get_random_foreground_position(config)
+                # if fc["random_color"]:
+                #     rep.randomizer.color(
+                #         colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
+                #     )
                 # Randomize Pose and Rotation
-                rep.randomizer.rotation()
-                rep.modify.pose(
-                    # position=rep.distribution.uniform((-300, -300, 1000), (300, 300, 1700)))
-                    position=rep.distribution.uniform(
-                        (fc["xy_range"][0], fc["xy_range"][0], fc["z_range"][0]), 
-                        (fc["xy_range"][1], fc["xy_range"][1], fc["z_range"][1])))
+                # if fc["random_rotation"]:
+                #     rep.randomizer.rotation()
+                # rep.modify.pose(
+                #     # position=rep.distribution.uniform((-300, -300, 1000), (300, 300, 1700)))
+                #     position=get_random_foreground_position(config)     
+                # )
+                # rep.randomizer.get_random_foreground_position(config)
                 #TODO: Look into model attributes which can be randomized
+            for obj in foreground_objects:
+                with obj:
+                    if fc["random_color"]:
+                        rep.randomizer.color(
+                            colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
+                        )
+                    if fc["random_rotation"]:
+                        rep.randomizer.rotation()
+                    rep.randomizer.get_random_foreground_position(config)
 
         # Initialize and attach writer
         writer = rep.WriterRegistry.get("BasicWriter")
@@ -399,6 +402,7 @@ def run_data_generation_scenario(config_path):
             bounding_box_3d=outputs["bounding_box_3d"],
             occlusion=outputs["occlusion"],
             normals=outputs["normals"],
+            pointcloud=outputs["pointclouds"]
         )
 
         writer.attach([render_product])
@@ -407,15 +411,24 @@ def run_data_generation_scenario(config_path):
         rep.orchestrator.run()
         # rep.orchestrator.run_async()
 
+
+
         # Script timer
         end_time = time.time()
         total_time = end_time - start_time
         time_per_image = total_time / config["num_frames"] if config["num_frames"] > 0 else float('inf')
         print(f"\n🕒 Total runtime: {total_time:.2f} seconds")
         print(f"🕒 Average time per image: {time_per_image:.4f} seconds")
+        
+        # Copy config to data output directory
+        if config["copy_config_to_output"]:
+            util.save_json(join(output_dir,"config.json"),config)
+            print("🖨️ Config copied to output directory.")
 
         print(f"✅ Completed Scenario: {basename(output_dir)}")
         print("\n== DONE ==\n")
+
+
 
 # Set up default configuration
 default_config_dir = "/home/ubuntu/config"

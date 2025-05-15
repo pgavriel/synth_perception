@@ -26,6 +26,10 @@ def load_json_config(file, verbose=False):
     
     return config
 
+def save_json(out_file, json_dict):
+    with open(out_file, "w") as f:
+        json.dump(json_dict, f, indent=4)  # 'indent' makes it nicely formatted
+
 def compute_plane_size(fov_deg, aspect_ratio, depth):
     fov_rad = math.radians(fov_deg)
     height = 2 * depth * math.tan(fov_rad / 2)
