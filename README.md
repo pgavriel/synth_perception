@@ -1,3 +1,4 @@
+![Banner](img/banner.png)  
 # Synth Perception   
 Robotics perception utilizing synthetic data derrived from real object-centric data.  
   
