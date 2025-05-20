@@ -1,6 +1,6 @@
-![Banner](img/banner.png)  
 # Synth Perception   
 Robotics perception utilizing synthetic data derrived from real object-centric data.  
+![Banner](img/banner.png)  
   
 This package supports the training of object detection and pose estimation models on synthetic data generated using [Unity Perception](https://github.com/Unity-Technologies/com.unity.perception). More recently, [Omniverse Replicator](https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator.html) has been adopted for data generation for improvements in both visual quality and ease of customization. The replicator_docker folder contains the necessary scripts for running Replicator inside a docker container and using it to generate custom synthetic data.  
 Object models used in synthetic data generation are created via training NeRF models in [NerfStudio](https://docs.nerf.studio/) on object data generated using the [NIST MOAD Data Collection Rig](https://www.robot-manipulation.org/nist-moad).  
