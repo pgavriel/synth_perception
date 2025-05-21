@@ -6,12 +6,14 @@ import sys
 import math
 from math import ceil
 import random
+# from pxr import Usd, UsdGeom
 
 sys.path.append(dirname(__file__))
 import utilities as util
 from utilities import clamp
     
 def create_camera(config):
+    print(f"\nCreating Camera...")
     camera_position = tuple(config["position"])
     camera_lookat = tuple(config["look_at"])
 
@@ -44,6 +46,7 @@ def create_lighting(config):
 
 
 def get_background_plane(config):
+    print(f"\nCreating Background Plane...")
     aspect = config["output_size"][0]/config["output_size"][1]
     config = config["background"]
     bkg_plane = rep.create.plane(
@@ -54,7 +57,20 @@ def get_background_plane(config):
     )
     return bkg_plane
 
+def get_background_object_plane(config):
+    print(f"\nCreating Background Object Plane...")
+    aspect = config["output_size"][0]/config["output_size"][1]
+    config = config["background"]
+    bkg_plane = rep.create.plane(
+        position=(0,0,config["depth"]+config["object_plane_offset"]),
+        rotation=(90,0,0),
+        scale=(config["scale"]*aspect,config["scale"],config["scale"]),
+        visible=False
+    )
+    return bkg_plane
+
 def create_background_objects(config):
+    print(f"\nCreating Background Objects...")
     config = config["background"]
     # Establish objects to spawn and object counts
     if config["object_count"] == 0:
@@ -110,6 +126,7 @@ def load_diffuse_materials(config, verbose=True):
     Returns:
         Replicator Group: Group of rep material objects created from texture images.
     """
+    print(f"\nCreating Background Materials...")
     materials = []
     root_dir = config["root"]
     subdirs = config["include_folders"]
@@ -118,7 +135,7 @@ def load_diffuse_materials(config, verbose=True):
     for subdir in subdirs:
         full_path = os.path.join(root_dir, subdir)
         if verbose:
-            print(f"\nSearching in: {full_path}")
+            print(f"Searching in: {full_path}")
 
         diff_textures_found = False
         fallback_textures = []
@@ -234,35 +251,58 @@ def create_foreground_objects(config):
             return None
     return objects
 
-def get_random_foreground_position(config,mod_size=True):
+def get_random_foreground_position(config):
+    """
+    Uses the output aspect ratio, and a specified field of view to obtain a random position inside
+    the camera frustrum, bounded by the config/foreground/z_range depth range.
+    NOTE: Assumes the camera is at (0,0,0) looking in the +Z direction.
+    """
     aspect_ratio = config["output_size"][0]/config["output_size"][1]
     fc = config["foreground"]
-    vfov_deg = fc["spawn_vfov"]
-    z_pos = random.uniform(fc["z_range"][0],fc["z_range"][1])
-    # z_pos = rep.distribution.uniform(fc["z_range"][0],fc["z_range"][1]).get_output()
-    # util.print_object_info(z_pos)
+    # Parameters
+    min_depth = fc["z_range"][0]
+    max_depth = fc["z_range"][1]
+    vfov_deg = fc["spawn_vfov"]  # vertical field of view
 
+    # IMPLEMENTATION 1: ANGULAR RAYS
+    # vfov_rad = math.radians(vfov_deg)
+    # hfov_rad = 2 * math.atan(math.tan(vfov_rad / 2) * aspect_ratio)
+
+    # depth = random.uniform(min_depth, max_depth)
+    # theta = random.uniform(-hfov_rad / 2, hfov_rad / 2)
+    # phi = random.uniform(-vfov_rad / 2, vfov_rad / 2)
+
+    # x = depth * math.tan(theta)
+    # y = depth * math.tan(phi)
+    # z = depth
+
+    # IMPLEMENTATION 2: DEPTH PLANES (SIMPLER)
+    # Select a random depth value within the specified range
+    z = random.uniform(min_depth,max_depth)
+    # Determine the proper XY bounds at the chosen depth
     vfov_rad = math.radians(vfov_deg)
-    
-    # Height at depth z
-    y_bound = math.tan(vfov_rad / 2) * z_pos
-    # y_pos = random.uniform(-y_bound,y_bound)
-
-    # Width = height * aspect
+    # # Height at depth z
+    y_bound = math.tan(vfov_rad / 2) * z
+    # # Width = height * aspect
     x_bound = y_bound * aspect_ratio
-    # x_pos = random.uniform(-x_bound,x_bound)
+    # Randomly select the XY coordinates within the calculated bounds
+    x = random.uniform(-x_bound,x_bound)
+    y = random.uniform(-y_bound,y_bound)
+    
+    # Return the chosen position tuple
+    # print(f"X:{x:.1f} - Y:{y:.1f} - Z:{z:.1f}")
+    return (x, y, z)
 
-    position = rep.distribution.uniform((-x_bound,-y_bound,z_pos),(x_bound,y_bound,z_pos))
-    size = (2*x_bound,2*y_bound,2*y_bound)
-    # print(f"POS: {position} - SIZE BOUNDS: {size}")
+# rep.randomizer.register(get_random_foreground_position)
 
-    return rep.modify.pose(position=position)
-    # return position
-rep.randomizer.register(get_random_foreground_position)
+def generate_foreground_positions(config,n=100):
+    print(f"Generating {n} possible foreground positions...")
+    positions = []
+    for i in range(n):
+        positions.append(get_random_foreground_position(config))
+    print("Done.")
+    return positions
 
-# default_config_dir = "/home/ubuntu/config"
-# default_config = "config_a.json"
-# config_path = join(default_config_dir,default_config)
 def run_data_generation_scenario(config_path):
     # MAIN START ========== ========== ========== ========== ========== ========== ========== ========== 
     print("\n== SCENARIO START ==\n")
@@ -276,21 +316,13 @@ def run_data_generation_scenario(config_path):
     # Render Settings
     rep.settings.set_render_rtx_realtime(antialiasing="FXAA")
 
-    # Failed MDL testing
-    # mdl_file="/home/ubuntu/materials/Ground/Mulch.mdl"
-    # mat_name="test"
-    # omni.kit.commands.execute('CreateAndBindMdlMaterialFromLibrary',
-    #                             mdl_name=mdl_file,
-    #                             mtl_name=mat_name
-    # )
-
     # New Scenario ========== ========== ========== ========== ========== ========== ========== ========== 
     with rep.new_layer():
 
         # Create Camera
         camera = create_camera(config["camera"])
-        camera_prim = rep.get.prims(path_pattern="(.*?)") 
-        util.print_object_info(camera._get_prims())
+        # camera_prim = rep.get.prims(path_pattern="(.*?)") 
+        # util.print_object_info(camera._get_prims())
         print(camera._get_prims())
 
         # Output render size
@@ -305,21 +337,25 @@ def run_data_generation_scenario(config_path):
         )
 
         # Create Background
-        #TODO: Define separate plane depth and object depth, just create 2 identical planes
-        plane = get_background_plane(config)
+        bkg_plane = get_background_plane(config)
         if config["background"]["spawn_objects"] == True:
+            object_plane = get_background_object_plane(config)
             background_group = create_background_objects(config)
         background_materials = load_diffuse_materials(config["background"]["materials"])
         # mdl_paths = load_mdl_materials(config["background"]["materials"])
 
         # Create Foreground objects
-        foreground_objects = create_foreground_objects(config)
         fc = config["foreground"]
+        if fc["spawn_objects"]:
+            foreground_objects = create_foreground_objects(config)
+            n = 2 * config["num_frames"] * fc["object_count"]
+            # TODO: Maybe pre-generate a list for each object, one position per frame
+            foreground_positions = generate_foreground_positions(config,n)
         
         # Generate N frames ========== ========== ========== ========== ========== ========== ========== 
         with rep.trigger.on_frame(max_execs=config["num_frames"],rt_subframes=config["num_subframes"]):
-
-            #  RANDOMIZE LIGHT ========== ========== ========== ========== 
+            print("Generating...")
+            # RANDOMIZE LIGHT ========== ========== ========== ========== 
             with rep.create.group(lights):
                 rep.modify.pose(
                     position_x=rep.distribution.uniform(lc["xy_range"][0],lc["xy_range"][1]),
@@ -332,8 +368,8 @@ def run_data_generation_scenario(config_path):
                 rep.modify.attribute("intensity",rep.distribution.uniform(lc["intensity"][0],lc["intensity"][1]))
                 # rep.modify.attribute("exposure",rep.distribution.uniform(lc["exposure"][0],lc["exposure"][1]))
             
-            #  RANDOMIZE BACKGROUND PLANE ========== ========== ========== ========== 
-            with rep.create.group([plane]):
+            # RANDOMIZE BACKGROUND PLANE ========== ========== ========== ========== 
+            with rep.create.group([bkg_plane]):
                 # rep.randomizer.color(
                 #     colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
                 # )
@@ -342,7 +378,7 @@ def run_data_generation_scenario(config_path):
             # RANDOMIZE BACKGROUND OBJECTS ========== ========== ========== ========== 
             if config["background"]["spawn_objects"] == True:
                 with background_group:
-                    rep.randomizer.scatter_2d(plane,check_for_collisions=config["background"]["check_collisions"])
+                    rep.randomizer.scatter_2d(object_plane,check_for_collisions=config["background"]["check_collisions"])
                     # rep.randomizer.color(
                     #     colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
                     # )
@@ -353,33 +389,21 @@ def run_data_generation_scenario(config_path):
                     )
 
             # RANDOMIZE FOREGROUND OBJECTS ========== ========== ========== ========== 
-            # with foreground_objects:
-                # Scatter was not working with loaded USD models
-                # rep.randomizer.scatter_3d(spawn_volume)
-                # rep.randomizer.scatter_2d(plane)
-                # position,size = get_random_foreground_position(config)
-                # if fc["random_color"]:
-                #     rep.randomizer.color(
-                #         colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
-                #     )
-                # Randomize Pose and Rotation
-                # if fc["random_rotation"]:
-                #     rep.randomizer.rotation()
-                # rep.modify.pose(
-                #     # position=rep.distribution.uniform((-300, -300, 1000), (300, 300, 1700)))
-                #     position=get_random_foreground_position(config)     
-                # )
-                # rep.randomizer.get_random_foreground_position(config)
-                #TODO: Look into model attributes which can be randomized
-            for obj in foreground_objects:
-                with obj:
-                    if fc["random_color"]:
-                        rep.randomizer.color(
-                            colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
-                        )
-                    if fc["random_rotation"]:
-                        rep.randomizer.rotation()
-                    rep.randomizer.get_random_foreground_position(config)
+            # TODO: Look into model attributes which can be randomized
+            if fc["spawn_objects"]:
+                for obj in foreground_objects:
+                    with obj:
+                        if fc["random_color"]:
+                            rep.randomizer.color(
+                                colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
+                            )
+                        if fc["random_rotation"]:
+                            rep.randomizer.rotation()
+
+                        # rand_pos = get_random_foreground_position(config)
+                        rep.modify.pose(position=rep.distribution.choice(foreground_positions))
+            
+                        # rep.randomizer.get_random_foreground_position(config)
 
         # Initialize and attach writer
         writer = rep.WriterRegistry.get("BasicWriter")
@@ -389,29 +413,31 @@ def run_data_generation_scenario(config_path):
         output_dir = util.create_incremental_dir(output_root,config["output_name"])
 
         # Configure data output types 
-        outputs = config["output_types"]
+        if "output_types" in config:
+            outputs = config["output_types"]
+        else:
+            outputs = dict()
+            print("WARNING: \"output_types\" not found in config, using defaults...")
         writer.initialize(
             output_dir=output_dir,
-            rgb=outputs["rgb"],
-            bounding_box_2d_tight=outputs["bounding_box_2d_tight"],
-            bounding_box_2d_loose=outputs["bounding_box_2d_loose"],
-            semantic_segmentation=outputs["semantic_segmentation"],
-            instance_segmentation=outputs["instance_segmentation"],
-            distance_to_camera=outputs["distance_to_camera"],
-            distance_to_image_plane=outputs["distance_to_image_plane"],
-            bounding_box_3d=outputs["bounding_box_3d"],
-            occlusion=outputs["occlusion"],
-            normals=outputs["normals"],
-            pointcloud=outputs["pointclouds"]
+            rgb=outputs.get("rgb",True),
+            bounding_box_2d_tight=outputs.get("bounding_box_2d_tight",False),
+            bounding_box_2d_loose=outputs.get("bounding_box_2d_loose",False),
+            semantic_segmentation=outputs.get("semantic_segmentation",False),
+            instance_segmentation=outputs.get("instance_segmentation",False),
+            distance_to_camera=outputs.get("distance_to_camera",False),
+            distance_to_image_plane=outputs.get("distance_to_image_plane",False),
+            bounding_box_3d=outputs.get("bounding_box_3d",False),
+            occlusion=outputs.get("occlusion",False),
+            normals=outputs.get("normals",False),
+            pointcloud=outputs.get("pointclouds",False),
+            camera_params=outputs.get("camera_params",False)
         )
 
         writer.attach([render_product])
 
         # Run scenario
         rep.orchestrator.run()
-        # rep.orchestrator.run_async()
-
-
 
         # Script timer
         end_time = time.time()
@@ -422,12 +448,11 @@ def run_data_generation_scenario(config_path):
         
         # Copy config to data output directory
         if config["copy_config_to_output"]:
-            util.save_json(join(output_dir,"config.json"),config)
+            util.save_json(join(output_dir,f"config_{basename(output_dir)}.json"),config)
             print("🖨️ Config copied to output directory.")
 
         print(f"✅ Completed Scenario: {basename(output_dir)}")
         print("\n== DONE ==\n")
-
 
 
 # Set up default configuration

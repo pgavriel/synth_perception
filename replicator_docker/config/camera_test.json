@@ -1,7 +1,8 @@
 {
     "scenario_name": "Development Scenario",
     "output_root": "/home/ubuntu/output",
-    "output_name": "fov_test",
+    "output_name": "camera/fov_test",
+    "copy_config_to_output": false,
     "output_size": [1920, 1080],
 
     "num_frames": 10,
@@ -31,7 +32,7 @@
         "depth": 2000,
         "density": 0.05,
         "scale": 11.5,
-        "show_plane": false,
+        "show_plane": true,
         "spawn_objects": false,
         "check_collisions": 0,
         "object_count": 10,
@@ -55,14 +56,15 @@
     },
 
     "foreground": {
+        "spawn_objects": true,
         "model_root": "/home/ubuntu/models",
-        "object_count": 50,
+        "object_count": 25,
         "objects": {
             "Sphere": ""
         },
         "random_rotation": false,
         "random_color": true,
-        "spawn_vfov": 25,
+        "spawn_vfov": 10,
         "z_range": [200,1800],
         "default_pos": [0,0,1000],
         "default_rot": [-90,0,0],

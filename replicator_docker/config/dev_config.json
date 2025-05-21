@@ -1,11 +1,11 @@
 {
     "scenario_name": "Development Scenario",
     "output_root": "/home/ubuntu/output",
-    "output_name": "detect",
-    "output_size": [1920, 1080],
+    "output_name": "dev/test",
     "copy_config_to_output": false,
 
-    "num_frames": 10,
+    "output_size": [1920, 1080],
+    "num_frames": 50,
     "num_subframes": 32,
 
     "camera": {
@@ -34,6 +34,7 @@
         "scale": 11.5,
         "show_plane": true,
         "spawn_objects": true,
+        "object_plane_offset": -100,
         "check_collisions": 0,
         "object_count": 10,
         "object_scale": [1,3],
@@ -48,7 +49,7 @@
         "materials": {
             "root": "/home/ubuntu/materials",
             "include_folders": ["NERVE","Concrete","Wood","Ground"],
-            "variants": 2,
+            "variants": 3,
             "roughness_range": [0, 1],
             "metallic_range": [0, 1],
             "specular_range": [0, 1]
@@ -56,15 +57,18 @@
     },
 
     "foreground": {
+        "spawn_objects": true,
         "model_root": "/home/ubuntu/models",
-        "object_count": 10,
+        "object_count": 5,
         "objects": {
-            "engine4.usd": "Engine"
+            "gear_large2.usd": "Large Gear",
+            "gear_medium.usd": "Medium Gear",
+            "gear_small.usd": "Small Gear"
         },
         "random_rotation": true,
         "random_color": false,
-        "spawn_vfov": 20,
-        "z_range": [100,800],
+        "spawn_vfov": 25,
+        "z_range": [50,100],
         "default_pos": [0,0,1000],
         "default_rot": [-90,0,0],
         "default_scale": 100
@@ -72,13 +76,14 @@
 
     "output_types": {
         "rgb": true,
-        "bounding_box_2d_tight": true,
+        "camera_params": true,
+        "bounding_box_2d_tight": false,
         "bounding_box_2d_loose": false,
         "semantic_segmentation": false,
         "instance_segmentation": false,
         "distance_to_camera": false,
         "distance_to_image_plane": false,
-        "bounding_box_3d": false,
+        "bounding_box_3d": true,
         "occlusion": false,
         "normals": false,
         "pointclouds": false
