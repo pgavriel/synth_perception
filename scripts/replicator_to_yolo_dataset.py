@@ -45,6 +45,7 @@ class ReplicatorToYOLOConverter:
         os.makedirs(self.label_dir, exist_ok=exist_ok)
         os.makedirs(join(self.label_dir,"train"), exist_ok=exist_ok)
         os.makedirs(join(self.label_dir,"val"), exist_ok=exist_ok)
+        print("Created subdirectories...")
     
     def get_label_assignments(self, label_file_pattern="bounding_box_2d_tight_labels_{}.json"):
         print("==== Collecting Label Assignments ====")
@@ -111,7 +112,7 @@ class ReplicatorToYOLOConverter:
 
     def convert(self):
         """
-        Process each dataset and convert it to the YOLO format.
+        Process each dataset and convert it to the YOLO training format.
         """
         image_pattern="rgb_{}.png"
         npy_pattern="bounding_box_2d_tight_{}.npy"
@@ -128,6 +129,9 @@ class ReplicatorToYOLOConverter:
             print(f"\n==== CONVERTING DATASET [{i}/{len(self.input_dirs)}]: {os.path.basename(input_dir)} ====")
             print(f"Path: {input_dir}")
 
+            #TODO: Import image size from config json or some other means...
+            w, h = (1920, 1080)
+
             # Reset train/val and label count
             count_train = 0
             count_val = 0
@@ -137,6 +141,12 @@ class ReplicatorToYOLOConverter:
 
             # For each RGB image in the dataset...
             for idx, image_path in enumerate(image_files, start=1):
+                # Get frame num and paths for label files
+                frame_num = os.path.splitext(os.path.basename(image_path))[0].split("_")[-1]
+                # Skip frame 0 which never renders properly for some reason
+                # TODO: Fix this in replicator
+                if int(frame_num) == 0: continue
+
                 # Decide whether data is in train or validation set
                 set_choice = "train"
                 # Get the validation data from the end of the list
@@ -147,11 +157,6 @@ class ReplicatorToYOLOConverter:
                     set_choice = "train"
                     count_train += 1
                 
-                # Get frame num and paths for label files
-                frame_num = os.path.splitext(os.path.basename(image_path))[0].split("_")[-1]
-                # Skip frame 0 which never renders properly for some reason
-                # TODO: Fix this in replicator
-                if int(frame_num) == 0: continue
                 npy_path = os.path.join(input_dir, npy_pattern.format(frame_num))
                 json_path = os.path.join(input_dir, json_pattern.format(frame_num))
 
@@ -207,10 +212,10 @@ class ReplicatorToYOLOConverter:
                         else:
                             count_labels += 1
                         
-                        x_center = (x1 + x2) / 2
-                        y_center = (y1 + y2) / 2
-                        width = abs(x2 - x1)
-                        height = abs(y2 - y1)
+                        x_center = ((x1 + x2) / 2) / w
+                        y_center = ((y1 + y2) / 2) / h
+                        width = abs(x2 - x1) / w
+                        height = abs(y2 - y1) / h
                         # Write to YOLO label file
                         lf.write(f"{class_id} {x_center} {y_center} {width} {height}\n")
                         # print(f" > {class_id} {x_center} {y_center} {width} {height}")
@@ -306,16 +311,23 @@ def load_and_display_bounding_boxes(
 if __name__ == "__main__":
     # Collect a list of full paths to each dataset folder to include
     replicator_root = "/home/csrobot/Omniverse/SynthData/engine"
-    # replicator_datasets = get_subfolders("/home/csrobot/Unity/SynthData/PoseTesting/wp_demo")
-    replicator_datasets = ["detect_001","detect_006"]
+    replicator_datasets = get_subfolders(replicator_root)
+    replicator_datasets = sorted(replicator_datasets)
+    rep_full_list = [join(replicator_root,dataset) for dataset in replicator_datasets]
     print(replicator_datasets)
-    convertion_list = [join(replicator_root,dataset) for dataset in replicator_datasets]
+
+    # Include negative example data
+    negative_root = "/home/csrobot/Omniverse/SynthData/negative"
+    negative_datasets = get_subfolders(negative_root)
+    neg_full_list = [join(negative_root,dataset) for dataset in negative_datasets]
+    
+    convertion_list = rep_full_list + neg_full_list
     print(convertion_list)
     # for d in convertion_list:
     #     load_and_display_bounding_boxes(d)
     # exit(0)
     output_root = "/home/csrobot/synth_perception/data"
-    yolo_dataset_name = "rep_test"
+    yolo_dataset_name = "engine_test2"
     validation_split = 0.15
 
     verbose = False

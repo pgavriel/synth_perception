@@ -6,6 +6,9 @@ script_name="run_scenario.sh"
 #     /run_scenario.sh "$arg"
 # done
 
+# Time the script
+start_time=$(date +%s)
+
 if [ $# -eq 0 ]; then
     "$script_dir/$script_name" 
 else
@@ -13,3 +16,8 @@ else
         "$script_dir/$script_name" "$arg"
     done
 fi
+
+end_time=$(date +%s)
+elapsed=$(( end_time - start_time ))
+
+echo "Script completed in $elapsed seconds."

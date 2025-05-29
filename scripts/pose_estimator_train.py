@@ -29,7 +29,7 @@ def compute_loss(output, target, criterion, weight_q=1.0, weight_q_angle=1.0):
     quat_gt = target[:, 6:10]
 
     size_weight = 1.0
-    trans_weight = 2.0
+    trans_weight = 0.01
     rot_weight = 1.0
 
     size_loss = criterion(size_pred, size_gt) * size_weight
@@ -201,15 +201,15 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = {}
     config["batch_size"] = 32
-    config["epochs"] = 5
+    config["epochs"] = 100
     config["learning_rate"] = 0.0001
     output_root = '/home/csrobot/synth_perception/runs/pose_estimation'
-    prefix = "log_test"#"gear"
+    prefix = "replicator_engine"#"gear"
     output_dir = util.create_incremental_dir(output_root,prefix)
     print(f"OUTPUT DIRECTORY: {output_dir}")
 
     # LOAD TRAINING DATA
-    config["training_set"] = "gear-pose1"
+    config["training_set"] = "engine_test2_pose"
     data_root = join("/home/csrobot/synth_perception/data/pose-estimation/",config["training_set"])
     train_dataset = PoseDataLoader(join(data_root,"images/train"), join(data_root,"labels/train"))
     val_dataset = PoseDataLoader(join(data_root,"images/val"), join(data_root,"labels/val"))
