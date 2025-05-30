@@ -8,7 +8,7 @@ import random
 import cv2
 from typing import List
 from pathlib import Path
-from utilities import get_subfolders, make_img_square, replicator_extract_3dbb_info, canonicalize_quaternion
+from utilities import get_subfolders, make_img_square, replicator_extract_3dbb_info, canonicalize_quaternion, get_uvwh
 import numpy as np
 import glob 
 from scipy.spatial.transform import Rotation as R
@@ -24,6 +24,11 @@ class ReplicatorToPoseEstimationDataset:
         self.input_dirs = input_dirs
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
+
+        # SET BOUNDING BOX MODE
+        self.bounding_box_mode = "loose" # "tight" or "loose"
+        self.occlusion_thresh = 0.50
+
         # Create necessary subdirectories
         self.create_subdirectories()
         # Create YOLO data.yaml file
@@ -50,7 +55,7 @@ class ReplicatorToPoseEstimationDataset:
         os.makedirs(join(self.label_dir,"val"), exist_ok=exist_ok)
         print("Created subdirectories...\n")
     
-    def get_label_assignments(self, label_file_pattern="bounding_box_3d_labels_{}.json"):
+    def get_label_assignments(self, label_file_pattern="bounding_box_2d_{}_labels_{}.json"):
         print("==== Collecting Label Assignments ====")
         print(f"Using label file pattern: {label_file_pattern}")
         unique_labels = set()
@@ -58,7 +63,7 @@ class ReplicatorToPoseEstimationDataset:
         for i, input_dir in enumerate(self.input_dirs, start=1):
 
             # Gather all annotation files
-            label_files = sorted(glob.glob(os.path.join(input_dir, label_file_pattern.format("*"))))
+            label_files = sorted(glob.glob(os.path.join(input_dir, label_file_pattern.format(self.bounding_box_mode,"*"))))
             if len(label_files) == 0:
                     print(f"Skipping {input_dir}: Missing required annotation files.")
                     continue
@@ -121,11 +126,11 @@ class ReplicatorToPoseEstimationDataset:
         """
         # Data processing for pose estimation requires both 2D bb annotations (for cropping), and 3D bb annotations (for transform information)
         image_pattern="rgb_{}.png"
-        bb_2d_npy_pattern="bounding_box_2d_tight_{}.npy"
-        bb_2d_json_pattern="bounding_box_2d_tight_labels_{}.json"
+        bb_2d_npy_pattern="bounding_box_2d_{}_{}.npy"
+        bb_2d_json_pattern="bounding_box_2d_{}_labels_{}.json"
         bb_3d_npy_pattern="bounding_box_3d_{}.npy"
         bb_3d_json_pattern="bounding_box_3d_labels_{}.json"
-        OCCLUSION_THRESH = 0.85
+        OCCLUSION_THRESH = self.occlusion_thresh
 
         # TODO: Add a timer
         total_count_train = 0
@@ -166,8 +171,8 @@ class ReplicatorToPoseEstimationDataset:
                     count_train += 1
                 
                 # Get annotation file paths
-                bb_2d_npy_path = os.path.join(input_dir, bb_2d_npy_pattern.format(frame_num))
-                bb_2d_json_path = os.path.join(input_dir, bb_2d_json_pattern.format(frame_num))
+                bb_2d_npy_path = os.path.join(input_dir, bb_2d_npy_pattern.format(self.bounding_box_mode,frame_num))
+                bb_2d_json_path = os.path.join(input_dir, bb_2d_json_pattern.format(self.bounding_box_mode,frame_num))
                 bb_3d_npy_path = os.path.join(input_dir, bb_3d_npy_pattern.format(frame_num))
                 bb_3d_json_path = os.path.join(input_dir, bb_3d_json_pattern.format(frame_num))
 
@@ -223,6 +228,7 @@ class ReplicatorToPoseEstimationDataset:
                 for bb2, bb3 in zip(bboxes_2d, bboxes_3d):
                     # STEP 1: GET 2D BB Crop from original image
                     id_2d, x1, y1, x2, y2, occlusion = bb2
+                    xyxy = np.asarray([x1, y1, x2, y2])
                     # If occlusion exceeds threshold, skip this object.
                     if occlusion > OCCLUSION_THRESH:
                         continue
@@ -239,16 +245,17 @@ class ReplicatorToPoseEstimationDataset:
                     # FORMAT: LabelID, bbcenterx, bbcentery, bbwidth, bbheight,
                     class_label = class_labels_2d[str(id_2d)].get("class",None)
                     class_id = self.yolo_classes[class_label]
-                    bbcx = (x1 + x2)/2 # 2D BB Center X
-                    bbcy = (y1 + y2)/2 # 2D BB Center Y
-                    bbw = abs(x2 - x1) # 2D BB Width
-                    bbh = abs(y2 - y1) # 2D BB Height
-                    # Crop Vector Values (As defined in source paper)
-                    cvec_u = (bbcx - cam_cx) / cam_fx
-                    cvec_v = (bbcy - cam_cy) / cam_fy
-                    cvec_w = bbw / cam_fx
-                    cvec_h = bbh / cam_fy
-                    uvwh = [cvec_u, cvec_v, cvec_w, cvec_h]
+                    # bbcx = (x1 + x2)/2 # 2D BB Center X
+                    # bbcy = (y1 + y2)/2 # 2D BB Center Y
+                    # bbw = abs(x2 - x1) # 2D BB Width
+                    # bbh = abs(y2 - y1) # 2D BB Height
+                    # # Crop Vector Values (As defined in source paper)
+                    # cvec_u = (bbcx - cam_cx) / cam_fx
+                    # cvec_v = (bbcy - cam_cy) / cam_fy
+                    # cvec_w = bbw / cam_fx
+                    # cvec_h = bbh / cam_fy
+                    # uvwh = [cvec_u, cvec_v, cvec_w, cvec_h]
+                    luvwh = get_uvwh(image_original, class_id, xyxy, FOCAL_LENGTH,verbose=False)
                     
                     # STEP 3: Get 3D BB Info
                     id_3d, tran, rot, scaled_size = replicator_extract_3dbb_info(bb3,verbose=False)[0]
@@ -256,7 +263,8 @@ class ReplicatorToPoseEstimationDataset:
                     rot = canonicalize_quaternion(rot,False)
                     
                     # Write data to txt file
-                    objects = [class_id, uvwh, list(scaled_size), list(tran), list(rot)]
+                    # objects = [class_id, uvwh, list(scaled_size), list(tran), list(rot)]
+                    objects = [luvwh, list(scaled_size), list(tran), list(rot)]
                     # print(f"Objects: {objects}")
                     flattened = list(chain.from_iterable(obj if isinstance(obj, list) else [obj] for obj in objects))
                     data_str = ','.join(map(str, flattened))
@@ -385,8 +393,10 @@ def load_and_display_bounding_boxes(
 # Example usage
 if __name__ == "__main__":
     # Collect a list of full paths to each dataset folder to include
-    replicator_root = "/home/csrobot/Omniverse/SynthData/engine"
+    replicator_root = "/home/csrobot/Omniverse/SynthData/engine_loose"
     replicator_datasets = get_subfolders(replicator_root)
+    replicator_datasets.remove("neg_001")
+    replicator_datasets.remove("neg_002")
     # replicator_datasets = sorted(replicator_datasets)
     # replicator_datasets = ["test_007"]
     rep_full_list = [join(replicator_root,dataset) for dataset in replicator_datasets]
@@ -404,7 +414,7 @@ if __name__ == "__main__":
     # exit(0) # Checkpoint 1 =========
 
     output_root = "/home/csrobot/synth_perception/data/pose-estimation"
-    output_dataset_name = "engine_test2_pose"
+    output_dataset_name = "engine_loose_pose2"
     validation_split = 0.15
 
     crop_size = 96

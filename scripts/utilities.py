@@ -134,9 +134,11 @@ def get_uvwh(image, label, bb_xyxy, fl=3000, verbose=True):
 
 def quat_is_normalized(quaternion, tol=1e-6):
     norm = np.linalg.norm(quaternion)
-    print(f"Q Norm: {norm}")
+    # print(f"Q Norm: {norm}")
     is_norm = abs(norm - 1.0) < tol
-    print(f"Quat is normalized: {is_norm}")
+    # print(f"Quat is normalized: {is_norm}")
+    if not is_norm:
+        print("WARNING Quaternion not normalized!")
     return is_norm
 
 def canonicalize_quaternion(q, verbose=True):
@@ -342,7 +344,7 @@ def replicator_draw_3d_bounding_box(image, translation, size, rotation, fl=6172,
     # rotation = canonicalize_quaternion(rotation)
     rotation_fixed = [rotation[0], rotation[1], rotation[2], -rotation[3]]
     r = R.from_quat(rotation_fixed)  # Rotation as [x, y, z, w]
-    print(f"Recieved Rotation: {rotation}")
+    # print(f"Recieved Rotation: {rotation}")
     # r = R.from_quat(rotation_corrected)  # Rotation as [-x, -y, -z, -w]
     corners_rotated = r.apply(corners)
 

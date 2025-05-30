@@ -29,8 +29,8 @@ def compute_loss(output, target, criterion, weight_q=1.0, weight_q_angle=1.0):
     quat_gt = target[:, 6:10]
 
     size_weight = 1.0
-    trans_weight = 0.01
-    rot_weight = 1.0
+    trans_weight = 1.0
+    rot_weight = 50.0
 
     size_loss = criterion(size_pred, size_gt) * size_weight
     size_loss = 0.0 # We are now ignoring size during training
@@ -51,7 +51,8 @@ def compute_loss(output, target, criterion, weight_q=1.0, weight_q_angle=1.0):
     }
 
 def translation_loss(t_pred, t_gt):
-    loss = F.l1_loss(t_pred, t_gt) # L1 Loss (Mean Absolute Error)
+    loss = F.l1_loss(t_pred, t_gt) # L1 Loss (Mean Absolute Error)    
+    # loss = torch.norm(t_pred - t_gt, dim=1).mean() # L2 Loss (Euclidean Distance)
     return loss 
 
 def geodesic_loss(q_pred, q_gt, eps=1e-8):
@@ -209,7 +210,7 @@ def main():
     print(f"OUTPUT DIRECTORY: {output_dir}")
 
     # LOAD TRAINING DATA
-    config["training_set"] = "engine_test2_pose"
+    config["training_set"] = "engine_loose_pose2"
     data_root = join("/home/csrobot/synth_perception/data/pose-estimation/",config["training_set"])
     train_dataset = PoseDataLoader(join(data_root,"images/train"), join(data_root,"labels/train"))
     val_dataset = PoseDataLoader(join(data_root,"images/val"), join(data_root,"labels/val"))

@@ -22,6 +22,10 @@ class ReplicatorToYOLOConverter:
         self.input_dirs = input_dirs
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
+
+        # SET BOUNDING BOX MODE
+        self.bounding_box_mode = "loose" # "tight" or "loose"
+        
         # Create necessary YOLO subdirectories
         self.create_subdirectories()
         # Create YOLO data.yaml file
@@ -47,14 +51,14 @@ class ReplicatorToYOLOConverter:
         os.makedirs(join(self.label_dir,"val"), exist_ok=exist_ok)
         print("Created subdirectories...")
     
-    def get_label_assignments(self, label_file_pattern="bounding_box_2d_tight_labels_{}.json"):
+    def get_label_assignments(self, label_file_pattern="bounding_box_2d_{}_labels_{}.json"):
         print("==== Collecting Label Assignments ====")
         unique_labels = set()
 
         for i, input_dir in enumerate(self.input_dirs, start=1):
 
             # Gather all annotation files
-            label_files = sorted(glob.glob(os.path.join(input_dir, label_file_pattern.format("*"))))
+            label_files = sorted(glob.glob(os.path.join(input_dir, label_file_pattern.format(self.bounding_box_mode,"*"))))
             if len(label_files) == 0:
                     print(f"Skipping {input_dir}: Missing required annotation files.")
                     continue
@@ -115,8 +119,8 @@ class ReplicatorToYOLOConverter:
         Process each dataset and convert it to the YOLO training format.
         """
         image_pattern="rgb_{}.png"
-        npy_pattern="bounding_box_2d_tight_{}.npy"
-        json_pattern="bounding_box_2d_tight_labels_{}.json"
+        npy_pattern="bounding_box_2d_{}_{}.npy"
+        json_pattern="bounding_box_2d_{}_labels_{}.json"
         OCCLUSION_THRESH = 0.85
 
         # TODO: Add a timer
@@ -157,8 +161,8 @@ class ReplicatorToYOLOConverter:
                     set_choice = "train"
                     count_train += 1
                 
-                npy_path = os.path.join(input_dir, npy_pattern.format(frame_num))
-                json_path = os.path.join(input_dir, json_pattern.format(frame_num))
+                npy_path = os.path.join(input_dir, npy_pattern.format(self.bounding_box_mode,frame_num))
+                json_path = os.path.join(input_dir, json_pattern.format(self.bounding_box_mode,frame_num))
 
                 # Verify each component exists 
                 if not os.path.exists(npy_path):
@@ -292,8 +296,8 @@ def load_and_display_bounding_boxes(
             print(f" > {bb}")
             if len(bb) < 6:
                 continue  # Skip malformed entries
-            _, x1, y1, x2, y2, unknown = bb
-            color = blend_color(float(unknown))
+            id, x1, y1, x2, y2, occlusion = bb
+            color = blend_color(float(occlusion))
             pt1, pt2 = (int(x1), int(y1)), (int(x2), int(y2))
             cv2.rectangle(image, pt1, pt2, color, 2)
 
@@ -310,24 +314,24 @@ def load_and_display_bounding_boxes(
 # Example usage
 if __name__ == "__main__":
     # Collect a list of full paths to each dataset folder to include
-    replicator_root = "/home/csrobot/Omniverse/SynthData/engine"
+    replicator_root = "/home/csrobot/Omniverse/SynthData/engine_loose"
     replicator_datasets = get_subfolders(replicator_root)
     replicator_datasets = sorted(replicator_datasets)
     rep_full_list = [join(replicator_root,dataset) for dataset in replicator_datasets]
     print(replicator_datasets)
 
     # Include negative example data
-    negative_root = "/home/csrobot/Omniverse/SynthData/negative"
-    negative_datasets = get_subfolders(negative_root)
-    neg_full_list = [join(negative_root,dataset) for dataset in negative_datasets]
+    # negative_root = "/home/csrobot/Omniverse/SynthData/negative"
+    # negative_datasets = get_subfolders(negative_root)
+    # neg_full_list = [join(negative_root,dataset) for dataset in negative_datasets]
     
-    convertion_list = rep_full_list + neg_full_list
+    convertion_list = rep_full_list #+ neg_full_list
     print(convertion_list)
     # for d in convertion_list:
     #     load_and_display_bounding_boxes(d)
     # exit(0)
     output_root = "/home/csrobot/synth_perception/data"
-    yolo_dataset_name = "engine_test2"
+    yolo_dataset_name = "engine_test_loose"
     validation_split = 0.15
 
     verbose = False

@@ -276,6 +276,7 @@ class UnityToPoseEstimationDataset:
         """
         Check if the output directory is structured correctly and contains valid data.
         """
+        print(f"\nChecking output dir: {self.output_dir}")
         if not os.listdir(self.image_dir):
             raise ValueError("No images found in the output directory.")
 

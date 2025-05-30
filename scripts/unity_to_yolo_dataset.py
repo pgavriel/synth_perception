@@ -233,17 +233,17 @@ class UnityToYOLOConverter:
 
 # Example usage
 if __name__ == "__main__":
-    unity_root = "/home/csrobot/Unity/SynthData/PoseTesting/gear"
+    unity_root = "/home/csrobot/Unity/SynthData/PoseTesting/wp_demo"
     # unity_datasets = ['engine_fruit' ,'engine_nerve' , 'negative_fruit', 'negative_nerve']
     # unity_datasets = ['mustard_nerve','mustard_fruit','negative_nerve','negative_fruit']
-    unity_datasets = get_subfolders("/home/csrobot/Unity/SynthData/PoseTesting/gear")
-    unity_datasets += ["../negative_nerve", "../negative_fruit"]
+    unity_datasets = get_subfolders("/home/csrobot/Unity/SynthData/PoseTesting/wp_demo")
+    # unity_datasets += ["../negative_nerve", "../negative_fruit"]
     print(unity_datasets)
     convertion_list = [join(unity_root,dataset) for dataset in unity_datasets]
 
 
     yolo_root = "/home/csrobot/synth_perception/data"
-    yolo_dataset_name = "gear_detect"
+    yolo_dataset_name = "wpconn_detect"
     validation_split = 0.15
 
     verbose = False

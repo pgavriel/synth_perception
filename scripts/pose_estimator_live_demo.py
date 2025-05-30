@@ -5,11 +5,11 @@ from ultralytics import YOLO
 from os.path import join
 from pose_estimator_model import PoseEstimationModel
 import utilities as util
-from utilities import make_img_square, get_uvwh, get_image_paths, draw_3d_bounding_box, get_files
+from utilities import make_img_square, get_uvwh, get_image_paths, draw_3d_bounding_box, get_files, replicator_draw_3d_bounding_box
 
 # Load the YOLO detection model
-model_folder = "train7" # Mustard Testing
-# model_folder = "gear2" # Gear Testing
+# model_folder = "train7" # Mustard Testing
+model_folder = "engine_test2" # Engine Testing
 model_path = join("/home/csrobot/synth_perception/runs/detect",model_folder,"weights/best.pt")
 detect_model = YOLO(model_path)  
 detect_model.info()
@@ -20,17 +20,19 @@ iou = 0.5 # default: 0.7 (lower numbers prevent prediction overlapping)
 max_det = 1
 visualize = False # default: False (saves a bunch of images)
 imgsz = (480,640) # default: 640 (width), 1920 on synth
+# imgsz = 1920 # default: 640 (width), 1920 on synth
 visualize_detection = True # Whether to visualize detection
 
 # Load the pose estimator model
 pose_model = PoseEstimationModel()
-model_folder = "mustard_041" # Mustard Testing
+model_folder = "replicator_engine_004" # Mustard Testing
 # model_folder = "gear_001" # Gear Testing
 model_name = "model_epoch_100.pth"
 state_dict = torch.load(join("/home/csrobot/synth_perception/runs/pose_estimation",model_folder,model_name), weights_only=True)
 pose_model.load_state_dict(state_dict)
 print('Weights loaded successfully!')
-
+pose_visual_modes = ['unity','replicator']
+pose_visual_mode = pose_visual_modes[1]
 headers = ["LABEL","CONF","BOX (XYWH)","BOX (XYWHN)"]
 
 # Load Object Size JSON
@@ -89,7 +91,7 @@ try:
                     conf = f"{d[4]:.3f}"
                     print(f"[{result.names[d[5]].center(10)}][{conf.center(10)}][{xywh}][{xywhn}]")
                     print(f"D: {d}")
-                    FOCAL_LENGTH = 4000 #4000 #6172 #429?
+                    FOCAL_LENGTH = 1000 #4000 #6172 #429?
                     pose_input_vector = get_uvwh(frame,d[5],xyxy,FOCAL_LENGTH)
                     x1, y1, x2, y2 = map(int, xyxy)
                     pose_input_crop = make_img_square(result.orig_img[y1:y2,x1:x2])
@@ -115,7 +117,12 @@ try:
                     # pose_image = draw_3d_bounding_box(img, out_size, out_tran, out_rot,FOCAL_LENGTH)
 
                     crops.append(make_img_square(result.orig_img[y1:y2,x1:x2]))
-                    pose_image = draw_3d_bounding_box(result.orig_img, out_tran, out_size, out_rot,FOCAL_LENGTH)
+                    if pose_visual_mode == 'unity':
+                        pose_image = draw_3d_bounding_box(result.orig_img, out_tran, out_size, out_rot,FOCAL_LENGTH)
+                    elif pose_visual_mode == 'replicator':
+                        pose_image = replicator_draw_3d_bounding_box(result.orig_img, out_tran, out_size, out_rot,FOCAL_LENGTH)
+                    else:
+                        print("WARNING: Not using a valid pose visualization mode!")
                     window_name = str(len(crops))
                     cv2.imshow("Detection Crop", crops[-1])
 
