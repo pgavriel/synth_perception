@@ -121,7 +121,7 @@ class ReplicatorToYOLOConverter:
         image_pattern="rgb_{}.png"
         npy_pattern="bounding_box_2d_{}_{}.npy"
         json_pattern="bounding_box_2d_{}_labels_{}.json"
-        OCCLUSION_THRESH = 0.85
+        OCCLUSION_THRESH = 0.75
 
         # TODO: Add a timer
         total_count_train = 0
@@ -331,7 +331,7 @@ if __name__ == "__main__":
     #     load_and_display_bounding_boxes(d)
     # exit(0)
     output_root = "/home/csrobot/synth_perception/data"
-    yolo_dataset_name = "engine_test_loose"
+    yolo_dataset_name = "engine_test_loose2"
     validation_split = 0.15
 
     verbose = False

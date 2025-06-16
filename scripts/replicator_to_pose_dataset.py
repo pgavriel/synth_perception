@@ -28,6 +28,7 @@ class ReplicatorToPoseEstimationDataset:
         # SET BOUNDING BOX MODE
         self.bounding_box_mode = "loose" # "tight" or "loose"
         self.occlusion_thresh = 0.50
+        self.translation_scale_factor = 1.0
 
         # Create necessary subdirectories
         self.create_subdirectories()
@@ -199,12 +200,12 @@ class ReplicatorToPoseEstimationDataset:
                 # GET CAMERA INTRINSIC INFORMATION
                 #TODO: These values are currently hardcoded, but could be extracted from camera params files
                 FOCAL_LENGTH = 2199 # Represents focal length X and Y
-                w = 1920
-                h = 1080
-                cam_cx = w / 2
-                cam_cy = h /2
-                cam_fx = FOCAL_LENGTH * cam_cx # camera matrix[0][0]
-                cam_fy = FOCAL_LENGTH * cam_cy # camera matrix[1][1]
+                # w = 1920
+                # h = 1080
+                # cam_cx = w / 2
+                # cam_cy = h /2
+                # cam_fx = FOCAL_LENGTH * cam_cx # camera matrix[0][0]
+                # cam_fy = FOCAL_LENGTH * cam_cy # camera matrix[1][1]
 
                 #Labels for 2D and 3D should be the same for any given dataset
                 with open(bb_2d_json_path, "r") as f:
@@ -225,12 +226,14 @@ class ReplicatorToPoseEstimationDataset:
                 # For each object in the scene...
                 # ASSUMES: BB2D and BB3D are in the same order
                 # NOTE: This assumption appears correct by manually inspecting the prim_paths annotation files. Need to do a larger test.
+                excluded_occ = 0
                 for bb2, bb3 in zip(bboxes_2d, bboxes_3d):
                     # STEP 1: GET 2D BB Crop from original image
                     id_2d, x1, y1, x2, y2, occlusion = bb2
                     xyxy = np.asarray([x1, y1, x2, y2])
                     # If occlusion exceeds threshold, skip this object.
                     if occlusion > OCCLUSION_THRESH:
+                        excluded_occ += 1
                         continue
                     # Extract crop, make it square, and reduce it to specified size
                     crop = image_original[y1:y2,x1:x2]
@@ -259,6 +262,8 @@ class ReplicatorToPoseEstimationDataset:
                     
                     # STEP 3: Get 3D BB Info
                     id_3d, tran, rot, scaled_size = replicator_extract_3dbb_info(bb3,verbose=False)[0]
+                    # Apply scaling to GT translation vector
+                    tran = tran * self.translation_scale_factor 
                     # Convert Rotation Quaternion to canonical form (Positive q0)
                     rot = canonicalize_quaternion(rot,False)
                     
@@ -276,15 +281,15 @@ class ReplicatorToPoseEstimationDataset:
                     # Increment data ID
                     self.current_data_id += 1
 
-                count_labels += len(bboxes_2d)
+                count_labels += (len(bboxes_2d)-excluded_occ)
                         
                 # Print info line for every image processed
-                entry_string = f"[{str(idx).center(5)}][ Bounding Boxes: {str(len(bboxes_2d)).center(10)}]"
+                entry_string = f"[{str(idx).center(5)}][ Bounding Boxes: {str(len(bboxes_2d)-excluded_occ).center(10)}]"
                 if self.verbose: print(entry_string)
                 
             print(f"[ Train Count: {count_train:4d} ][ Validation Count: {count_val:4d} ]")
             print(f"[ Total Label Count: {(count_labels):5d} ][ Average Label Count: {(count_labels/(len(image_files)-1)):5f} ]")
-            print(f"[ Camera Properties ][ {w} x {h} ][ cx:{cam_cx} cy:{cam_cy} ][ fx:{cam_fx:.2f} fy:{cam_fy:.2f} ]\n")
+            # print(f"[ Camera Properties ][ {w} x {h} ][ cx:{cam_cx} cy:{cam_cy} ][ fx:{cam_fx:.2f} fy:{cam_fy:.2f} ]\n")
                 
             total_count_train += count_train
             total_count_val += count_val
@@ -397,6 +402,7 @@ if __name__ == "__main__":
     replicator_datasets = get_subfolders(replicator_root)
     replicator_datasets.remove("neg_001")
     replicator_datasets.remove("neg_002")
+    # replicator_datasets = ["t_test_001"]
     # replicator_datasets = sorted(replicator_datasets)
     # replicator_datasets = ["test_007"]
     rep_full_list = [join(replicator_root,dataset) for dataset in replicator_datasets]
@@ -414,7 +420,7 @@ if __name__ == "__main__":
     # exit(0) # Checkpoint 1 =========
 
     output_root = "/home/csrobot/synth_perception/data/pose-estimation"
-    output_dataset_name = "engine_loose_pose2"
+    output_dataset_name = "engine_a1"
     validation_split = 0.15
 
     crop_size = 96
@@ -423,9 +429,11 @@ if __name__ == "__main__":
         "w": 1920,
         "h": 1080
     }
-    verbose = False
+    verbose = True
 
     converter = ReplicatorToPoseEstimationDataset(convertion_list, join(output_root,output_dataset_name),validation_split,crop_size,verbose)
+    converter.occlusion_thresh = 0.2
+    converter.translation_scale_factor = 1#/1000
     # exit(0) # Checkpoint 2 =======
 
     converter.convert()

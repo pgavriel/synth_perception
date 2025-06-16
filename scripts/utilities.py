@@ -1,4 +1,5 @@
 import os
+from os.path import join, exists
 import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -6,6 +7,11 @@ from pathlib import Path
 import datetime
 import json
 import random
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib
+# print(matplotlib.rcsetup.all_backends)
+matplotlib.use('TkAgg')  # or 'Agg' for non-GUI use
 
 def timestamp(format="%y-%m-%d-%H-%M-%S"):
     # Get the current time
@@ -34,6 +40,29 @@ def load_json(file,verbose=True):
 def get_size_vector(object_name, size_dict):
     return size_dict.get(object_name, size_dict["default"])
 
+def scatterplot_from_csv(csv_file, x_field, y_field):
+    # Load CSV into a DataFrame
+    df = pd.read_csv(csv_file)
+    
+    # Check if fields exist
+    if x_field not in df.columns or y_field not in df.columns:
+        raise ValueError(f"CSV does not contain required fields: {x_field}, {y_field}")
+    
+    # Extract data
+    x = df[x_field]
+    y = df[y_field]
+    
+    # Plot scatter
+    plt.figure(figsize=(8,6))
+    plt.scatter(x, y, alpha=0.7)
+    x_field = "Translation Error"
+    y_field = "Rotation Error"
+    plt.xlabel(x_field)
+    plt.ylabel(y_field)
+    plt.title(f"Scatter Plot of {y_field} vs {x_field}")
+    plt.title(f"Pose Estimation Model Error on Benchmark engine_001")
+    plt.grid(True)
+    plt.show()
 
 def create_incremental_dir(root, prefix="test", digits=3):
     os.makedirs(root, exist_ok=True)  # Ensure root exists
@@ -107,15 +136,15 @@ def make_img_square(img, size=96, verbose=False):
     return resized_image
 
 
-def get_uvwh(image, label, bb_xyxy, fl=3000, verbose=True):
+def get_uvwh(image, label, bb_xyxy, fl=3000, flip_uv=True, verbose=True):
     '''
     Get input vector for pose model from detection
     '''
     height, width, _ = image.shape
     cam_cx = width / 2
     cam_cy = height /2
-    cam_fx = fl * cam_cx # camera_matrix[0] * cam_cx # matrix[0][0]
-    cam_fy = fl * cam_cy # camera_matrix[4] * cam_cy # matrix[1][1]
+    cam_fx = cam_cx #* fl ### camera_matrix[0] * cam_cx # matrix[0][0]
+    cam_fy = cam_cy #* fl ### camera_matrix[4] * cam_cy # matrix[1][1]
 
     bbw = bb_xyxy[2] - bb_xyxy[0] # bb["dimension"][0] # 2D BB Width
     bbh = bb_xyxy[3] - bb_xyxy[1] # bb["dimension"][1] # 2D BB Height
@@ -126,6 +155,9 @@ def get_uvwh(image, label, bb_xyxy, fl=3000, verbose=True):
     cvec_v = (bbcy - cam_cy) / cam_fy
     cvec_w = bbw / cam_fx
     cvec_h = bbh / cam_fy
+    if flip_uv:
+        cvec_u = -cvec_u
+        cvec_v = -cvec_v
     label_uvwh = [label, cvec_u, cvec_v, cvec_w, cvec_h]
     if verbose:
         print(f"Model Input Vector LUVWH: {label_uvwh}")
@@ -269,6 +301,90 @@ def draw_3d_bounding_box(image, translation, size, rotation, fl=6172, color=(255
                 image = cv2.circle(image,p,5,(c_val,0,0),-1)    
                 
     return image
+
+def replicator_load_frame_data(dataset_dir, frame_num,
+                               rgb_file = "rgb_{}.png",
+                               bb_2d_type="loose",
+                               bb_2d_data_pattern="bounding_box_2d_{}_{}.npy",
+                               bb_2d_labels_pattern="bounding_box_2d_{}_labels_{}.json",
+                               bb_2d_prims_pattern="bounding_box_2d_{}_prim_paths_{}.json",
+                               bb_3d_data_pattern="bounding_box_3d_{}.npy",
+                               bb_3d_labels_pattern="bounding_box_3d_labels_{}.json",
+                               bb_3d_prims_pattern="bounding_box_3d_prim_paths_{}.json",
+                               verbose=True
+                               ):
+    # NOTE: Expects frame_num to be a string like "0002", not int
+    assert bb_2d_type == "loose" or bb_2d_type == "tight"
+
+    # Assemble dictionary of all required filepaths
+    required_files = {
+        "img":join(dataset_dir,rgb_file.format(frame_num)),
+        "data_2d":join(dataset_dir,bb_2d_data_pattern.format(bb_2d_type,frame_num)),
+        "lbl_2d":join(dataset_dir,bb_2d_labels_pattern.format(bb_2d_type,frame_num)),
+        "prim_2d":join(dataset_dir,bb_2d_prims_pattern.format(bb_2d_type,frame_num)),
+        "data_3d":join(dataset_dir,bb_3d_data_pattern.format(frame_num)),
+        "lbl_3d":join(dataset_dir,bb_3d_labels_pattern.format(frame_num)),
+        "prim_3d":join(dataset_dir,bb_3d_prims_pattern.format(frame_num))
+    }
+
+    # Check to make sure all required files exist
+    for f in required_files:
+        if not exists(required_files[f]):
+            print(f"ERROR: Missing {f} file for frame {frame_num}: {required_files[f]}")
+            return None
+    
+    # Load required files
+    # Attempt to load image with opencv
+    image = cv2.imread(required_files["img"])
+    #Labels for 2D and 3D should be the same for any given dataset
+    with open(required_files["lbl_2d"], "r") as f:
+        class_labels_2d = json.load(f)
+    with open(required_files["lbl_3d"], "r") as f:
+        class_labels_3d = json.load(f)
+    #Prim path files
+    with open(required_files["prim_2d"], "r") as f:
+        prims_2d = json.load(f)
+    with open(required_files["prim_3d"], "r") as f:
+        prims_3d = json.load(f)
+    # Bounding box data
+    bboxes_2d = np.load(required_files["data_2d"])
+    bboxes_3d = np.load(required_files["data_3d"])
+
+    # Sanity checks
+    assert len(prims_2d) == len(bboxes_2d), "2D paths and labels length mismatch"
+    assert len(prims_3d) == len(bboxes_3d), "3D paths and labels length mismatch"
+
+    # Build dictionaries
+    two_d_dict = dict(zip(prims_2d, bboxes_2d))
+    three_d_dict = dict(zip(prims_3d, bboxes_3d))
+
+    # Match keys
+    matching_keys = set(two_d_dict) & set(three_d_dict)
+
+    matched_labels = [
+        {
+            "prim_path": key,
+            "2d_label": two_d_dict[key],
+            "3d_label": three_d_dict[key]
+        }
+        for key in matching_keys
+    ]
+
+    # Debug printout to show unmatched prim keys
+    debug_str = f"[{frame_num}][ UNMATCHED PRIMS ] " 
+    debug_print= False
+    unmatched_2d = set(two_d_dict) - matching_keys
+    if len(unmatched_2d) > 0:
+        debug_str += f"2D: {unmatched_2d}\t\t"
+        debug_print = True
+    unmatched_3d = set(three_d_dict) - matching_keys
+    if len(unmatched_3d) > 0:
+        debug_str += f"3D: {unmatched_3d}\t\t"
+        debug_print = True
+    if debug_print: print(debug_str)
+
+    return image, matched_labels
+
 
 def replicator_extract_3dbb_info(bbox=None,annotation_file=None,verbose=False):
     """
@@ -439,5 +555,10 @@ def capture_frames(output_dir="captured_frames", prefix="frame_", digits=3):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    save_dir = "/home/csrobot/Pictures/collected"
-    capture_frames(save_dir)
+    # save_dir = "/home/csrobot/Pictures/collected"
+    # capture_frames(save_dir)
+    pass
+    # Testing replicator stuff
+    # replicator_load_frame_data("/home/csrobot/Omniverse/SynthData/engine_loose/test_004","0003")
+    csv_file = "/home/csrobot/Omniverse/SynthData/benchmarking/engine_001/benchmarking/benchmark_results.csv"
+    scatterplot_from_csv(csv_file,"trans_mae_losses_mean","geodesic_losses_mean")

@@ -13,7 +13,7 @@ class PoseEstimationModel(nn.Module):
         super(PoseEstimationModel, self).__init__()
 
         IMG_BRANCH_OUT_SIZE = 256
-        VEC_BRANCH_OUT_SIZE = 128
+        VEC_BRANCH_OUT_SIZE = 256#128
 
         # Image branch: Convolutional layers to process 96x96x3 images
         self.conv_layers = nn.Sequential(
@@ -51,12 +51,30 @@ class PoseEstimationModel(nn.Module):
         )
 
         # Combined branch
-        self.fc_combined = nn.Sequential(
+        self.fc_shared = nn.Sequential(
             nn.Linear(VEC_BRANCH_OUT_SIZE + IMG_BRANCH_OUT_SIZE, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
+            nn.ReLU()
+        )
+
+        # Define separate output branches for each prediciton
+        self.fc_size = nn.Sequential(
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(128, 10)  # 3 for size, 3 for translation, 4 for quaternion rotation
+            nn.Linear(64, 3)
+        )
+
+        self.fc_translation = nn.Sequential(
+            nn.Linear(VEC_BRANCH_OUT_SIZE, 64), # was 128 to match shared branch output size
+            nn.ReLU(),
+            nn.Linear(64, 3)
+        )
+
+        self.fc_rotation = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 4)
         )
 
     def forward(self, image, vector):
@@ -70,18 +88,19 @@ class PoseEstimationModel(nn.Module):
 
         # Concatenate both branches
         x = torch.cat((x_image, x_vector), dim=1)
-        output = self.fc_combined(x)
+        x = self.fc_shared(x)
 
-        # Split the output: first 6 values (e.g., translation + other params), last 4 for quaternion
-        non_quat, quat = output[:, :6], output[:, 6:]
-        # Normalize quaternion to ensure it's a unit quaternion
-        # quat = quat / torch.norm(quat, dim=1, keepdim=True)
-        # # Canonicalize Quaternion
-        # quat = canonicalize_quaternion(quat.detach().numpy())
-        quat = self._normalize_and_canonicalize_quaternion(quat)
-        # Concatenate back together
-        output = torch.cat((non_quat, quat), dim=1)
+        # Get each prediction head
+        size = self.fc_size(x)
+        translation = self.fc_translation(x_vector)
+        # translation = self.fc_translation(x)
+        rotation = self.fc_rotation(x)
 
+        # Normalize quaternion to unit length
+        rotation = self._normalize_and_canonicalize_quaternion(rotation)
+        
+        # Concatenate all outputs: [size, translation, rotation]
+        output = torch.cat((size, translation, rotation), dim=1)
         return output
     
     @staticmethod

@@ -9,7 +9,7 @@ from utilities import make_img_square, get_uvwh, get_image_paths, draw_3d_boundi
 
 # Load the YOLO detection model
 # model_folder = "train7" # Mustard Testing
-model_folder = "engine_test2" # Engine Testing
+model_folder = "engine_test_loose_2" # Engine Testing
 model_path = join("/home/csrobot/synth_perception/runs/detect",model_folder,"weights/best.pt")
 detect_model = YOLO(model_path)  
 detect_model.info()
@@ -25,7 +25,7 @@ visualize_detection = True # Whether to visualize detection
 
 # Load the pose estimator model
 pose_model = PoseEstimationModel()
-model_folder = "replicator_engine_004" # Mustard Testing
+model_folder = "uv_engine_024" # Mustard Testing
 # model_folder = "gear_001" # Gear Testing
 model_name = "model_epoch_100.pth"
 state_dict = torch.load(join("/home/csrobot/synth_perception/runs/pose_estimation",model_folder,model_name), weights_only=True)
@@ -107,7 +107,7 @@ try:
                     # out_size = output[0][0:3]
                     print("NAME ",name)
                     out_size = util.get_size_vector(name,object_sizes)
-                    out_tran = output[0][3:6]
+                    out_tran = output[0][3:6] * 1000
                     out_rot  = output[0][6:]
 
                     # pose_outputs = model(pose_input_crop, pose_input_vector)

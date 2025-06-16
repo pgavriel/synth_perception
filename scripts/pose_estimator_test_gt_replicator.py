@@ -4,123 +4,171 @@ import torch
 import numpy as np
 from os.path import join, isfile
 import os 
+import csv
 import json
 import glob
 import utilities as util
 from utilities import make_img_square, get_uvwh, get_image_paths, draw_3d_bounding_box, get_files, canonicalize_quaternion, replicator_extract_3dbb_info, replicator_draw_3d_bounding_box
 from pose_estimator_model import PoseEstimationModel
-from pose_estimator_train import geodesic_loss, rotation_angle_loss
+from pose_estimator_train import geodesic_loss, rotation_angle_loss, translation_euclidean_loss, translation_loss
+import matplotlib.pyplot as plt
 
 """
 This script is used to validate the post estimation model on ground truth labels, using the ground truth 2D BB as the detection
 and using the ground truth 3D BB as a ground truth comparison. 
 """
+
+
+def log_benchmark_metrics(bench_metrics, output_dir, log_name, log_info):
+    os.makedirs(output_dir, exist_ok=True)
+    log_file = os.path.join(output_dir, f"{log_name}.csv")
+    log_exists = os.path.isfile(log_file)
+
+    # Compute metric stats
+    metric_stats = {}
+    for metric_name, values in bench_metrics.items():
+        values = np.array(values)
+        metric_stats[f"{metric_name}_mean"] = np.mean(values)
+        metric_stats[f"{metric_name}_std"] = np.std(values)
+
+    # Use custom or default timestamp
+    timestamp = util.timestamp()
+
+    # Open the file in append mode
+    with open(log_file, mode='a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+
+        # If the file is new, write headers
+        if not log_exists:
+            header = ['Timestamp']
+            header += list(log_info.keys())
+            header += list(metric_stats.keys())
+            writer.writerow(header)
+            print("Log Created.")
+
+        # Assemble row
+        row = [timestamp]
+        row += [log_info.get(k, "N/A") for k in log_info]
+        row += [f"{metric_stats[k]:.4f}" for k in metric_stats]
+        writer.writerow(row)
+        print("\nLog Appended.")
+
+def plot_benchmark_metrics(bench_metrics, output_dir, file_name="benchmark_loss_metrics",bench_name="None",show_plot=False, bins=50):
+    """
+    Plot histograms of benchmark loss metrics.
+
+    Parameters:
+    - bench_metrics (dict of str -> list of float): Dictionary containing metric lists.
+    - output_dir (str): Directory to save the resulting plot image.
+    - show_plot (bool): Whether to display the plot before saving.
+    - bins (int): Number of bins to use in the histograms.
+    """
+    num_metrics = len(bench_metrics)
+    cols = 2
+    rows = (num_metrics + 1) // cols
+
+    plt.figure(figsize=(10, 4 * rows))
+    for i, (metric_name, values) in enumerate(bench_metrics.items()):
+        plt.subplot(rows, cols, i + 1)
+        plt.hist(values, bins=bins, color='skyblue', edgecolor='black')
+        plt.title(metric_name.replace("_", " ").title())
+        plt.xlabel("Value")
+        plt.ylabel("Frequency")
+
+    plt.suptitle(f"Test Model: {file_name}\nBenchmark Set: {bench_name}", fontsize=14)
+    plt.tight_layout()
+
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{file_name}.png")
+    plt.savefig(output_path)
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+
+
 if __name__ == "__main__":
-    # Load Object Size information
+    
+    # Load Object Size information - Size will be ignored in benchmark metrics
     object_sizes = util.load_json("object_sizes.json")
 
-    save_images = False
-    # output_dir = '/home/csrobot/Pictures/yolo_results_p'
+    # Create output directory for saving images with drawn labels/predictions
+    save_images = True
     if save_images:
-        output_dir = util.create_incremental_dir("/home/csrobot/Pictures/","rep_pose_testing")
-        os.makedirs(output_dir, exist_ok=True)
+        img_output_dir = util.create_incremental_dir("/home/csrobot/Pictures/","bench_best")
+        os.makedirs(img_output_dir, exist_ok=True)
+
 
     visualize_images = True
     delay_ms = 0 # 0 to wait indefinitely for key input on each image
+    
+    # Whether to log / plot results
+    log_results = False
 
-    # If we're testing on synthetic data, try to visualize the GT 3DBB
-    visualize_synth_gt = True 
+    verbose = True
 
     # TODO: Determine programatically from camera GT
-    FOCAL_LENGTH = 6172 #4000 #6172
+    FOCAL_LENGTH = 2199 #4000 #6172
 
-    # Print Debug output
-    verbose = False
-    get_crops = False
     
     # Text options
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.5
     color = (255, 255, 255)  # White color
     thickness = 2
-    # Load a detection model 
-    # print("Loading Model...")
-    # detect_model_folder = "train7"
-    # detect_model_path = join("/home/csrobot/synth_perception/runs/detect",detect_model_folder,"weights/best.pt")
-    # detect_model = YOLO(detect_model_path) # give path to .pt file
 
-    # Display model information (optional)
-    # model.info()
-
-    # YOLO Inference Configuration [ https://docs.ultralytics.com/modes/predict/#inference-arguments ]
-    # min_conf = 0.5 # default: 0.25
-    # iou = 0.5 # default: 0.7 (lower numbers prevent prediction overlapping)
-    # visualize = False # default: False (saves a bunch of images)
-    # imgsz = 640 # default: 640 (width), 1920 on synth
-    
+    # TODO: Load the experiment_log.csv, to get additional information on the model being tested, like training dataset and hyperparams
     # Load the pose estimator model
     pose_model = PoseEstimationModel()
     # model_folder = "mustard_041"
-    model_folder = "replicator_engine_009"
-    state_dict = torch.load(join("/home/csrobot/synth_perception/runs/pose_estimation",model_folder,"model_epoch_100.pth"), weights_only=True)
+    model_root = "/home/csrobot/synth_perception/runs/pose_estimation"
+    model_folder = "uv_engine_022"
+    model_file = "model_epoch_100.pth"
+    state_dict = torch.load(join(model_root,model_folder,model_file), weights_only=True)
     pose_model.load_state_dict(state_dict)
     pose_model.eval()
     print('Pose Estimation model loaded successfully!')
 
-    image_pattern="rgb_{}.png"
-    bb_2d_style = "loose" # "tight or "loose"
-    bb_2d_npy_pattern="bounding_box_2d_{}_{}.npy"
-    bb_2d_json_pattern="bounding_box_2d_{}_labels_{}.json"
-    bb_3d_npy_pattern="bounding_box_3d_{}.npy"
-    bb_3d_json_pattern="bounding_box_3d_labels_{}.json"
+    # FILE PATTERNS FOR GROUND TRUTH IMAGES AND LABELS
+
     # Run inference test
     # Get a list of image paths to test the model on 
-    # image_list = get_image_paths("/home/csrobot/Pictures/mustard_test")
-    # image_list = sorted(image_list)
-    # image_list = get_files("/home/csrobot/Omniverse/SynthData/engine/test_001")
-    folder_path = "/home/csrobot/Omniverse/SynthData/engine/loose_001"
-    image_files = sorted(glob.glob(os.path.join(folder_path, image_pattern.format("*"))))
+    # Should be a direct replicator output dataset with 2D (loose) and 3D bounding box labels
+    folder_path = "/home/csrobot/Omniverse/SynthData/benchmarking/engine_single_001"
+    # folder_path = "/home/csrobot/Omniverse/SynthData/benchmarking/engine_001"
 
-    # image_list = get_files("/home/csrobot/Pictures/collected")
-    # image_files = image_files[:3]
-    # image_list = [image_list[1]]
+    image_pattern="rgb_{}.png"
+    image_files = sorted(glob.glob(os.path.join(folder_path, image_pattern.format("*"))))
+    # Restrict the size of test images (mostly for dev testing)
+    limit_test_sample = True
+    test_sample_size = 25
+    if limit_test_sample:
+        image_files = image_files[:test_sample_size+1]
     print(f"Found {len(image_files)} images...")
-    headers = ["LABEL","CONF","BOX (XYWH)","BOX (XYWHN)"]
-    # exit()
+    
+    # Setup metrics
+    bench_metrics = {
+        "rotation_angle_losses": [],
+        "geodesic_losses": [],
+        "trans_mae_losses": [],
+        "trans_euc_losses": []
+    }
+    bench_info = {
+        "model_name": model_folder,
+        "model_file": model_file,
+        "bench_dataset": folder_path.split('/')[-1],
+        "training_dataset": "Unknown" # TODO: load experiment log csv and get this info
+    }
+    output_dir  = join(folder_path,"benchmarking")
+
     # For each test image...
     for c, img_path in enumerate(image_files, start=1):
         # Extract frame number
         frame_num = os.path.splitext(os.path.basename(img_path))[0].split("_")[-1]
         if int(frame_num) == 0: continue
-
-        # Get annotation file paths
-        bb_2d_npy_path = os.path.join(folder_path, bb_2d_npy_pattern.format(bb_2d_style,frame_num))
-        bb_2d_json_path = os.path.join(folder_path, bb_2d_json_pattern.format(bb_2d_style,frame_num))
-        bb_3d_npy_path = os.path.join(folder_path, bb_3d_npy_pattern.format(frame_num))
-        bb_3d_json_path = os.path.join(folder_path, bb_3d_json_pattern.format(frame_num))
-        # Verify each component exists 
-        if not os.path.exists(bb_2d_npy_path):
-            print(f"ERROR: Missing .npy file for frame {frame_num}: {bb_2d_npy_path}")
-            continue
-        if not os.path.exists(bb_2d_json_path):
-            print(f"ERROR: Missing .json file for frame {frame_num}: {bb_2d_json_path}")
-            continue
-        if not os.path.exists(bb_3d_npy_path):
-            print(f"ERROR: Missing .npy file for frame {frame_num}: {bb_3d_npy_path}")
-            continue
-        if not os.path.exists(bb_3d_json_path):
-            print(f"ERROR: Missing .json file for frame {frame_num}: {bb_3d_json_path}")
-            continue
-        if not os.path.exists(img_path):
-            print(f"ERROR: Image {img_path} not found, skipping.")
-            continue
-
-        # Attempt to load image with opencv
-        orig_img = cv2.imread(img_path)
-        # orig_img = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
-        if orig_img is None:
-            print(f"Error: Could not load {img_path}")
-            continue
+        
+        orig_img, frame_data = util.replicator_load_frame_data(folder_path,frame_num)
         img = orig_img.copy()
 
         # GET CAMERA INTRINSIC INFORMATION
@@ -133,35 +181,21 @@ if __name__ == "__main__":
         cam_fx = FOCAL_LENGTH * cam_cx # camera matrix[0][0]
         cam_fy = FOCAL_LENGTH * cam_cy # camera matrix[1][1]
     
-        #Labels for 2D and 3D should be the same for any given dataset
-        with open(bb_2d_json_path, "r") as f:
-            class_labels_2d = json.load(f)
-        with open(bb_3d_json_path, "r") as f:
-            class_labels_3d = json.load(f)
-        # print(f"Labels: {labels}")
-
-        bboxes_2d = np.load(bb_2d_npy_path)
-        bboxes_3d = np.load(bb_3d_npy_path)
-        
-        if len(bboxes_2d) != len(bboxes_3d):
-            print(f"SKIP! - Len 2D: {len(bboxes_2d)} - Len 3D: {len(bboxes_3d)} - {bb_2d_json_path}")
-            continue
-        
-        # Load Annotations (Replicator)
-        labels = replicator_extract_3dbb_info(annotation_file=bb_3d_npy_path,verbose=True)
-    
-
         losses = {}
         instance_id = 1
         # For every pair of (2D/3D) ground truth bounding boxes found...
-        for bb2d, bb3d, labels3d in zip(bboxes_2d, bboxes_3d, labels):
-            print(f"\n===== [ IMAGE {c}][ DETECTION {instance_id}] ==========================================")
+        for label_pair in frame_data:
+            bb2d = label_pair["2d_label"]
+            bb3d = label_pair["3d_label"]
+            labels3d = replicator_extract_3dbb_info(bbox=bb3d)[0]
+        # for bb2d, bb3d, labels3d in zip(bboxes_2d, bboxes_3d, labels):
+            if verbose: print(f"\n===== [ IMAGE {c}][ FRAME {frame_num} ][ DETECTION {instance_id}] ==========================================")
             # VISUALIZE GROUND TRUTHS  ======================
             # Draw the ground truth 2D bounding box
             id, x1, y1, x2, y2, occlusion = bb2d
             pt1, pt2 = (int(x1), int(y1)), (int(x2), int(y2))
             cv2.rectangle(img, pt1, pt2, color, 1)
-            img = cv2.putText(img, str(id), (x1-5,y1-5), font, font_scale, color, thickness)
+            img = cv2.putText(img, str(instance_id), (x1-5,y1-5), font, font_scale, color, thickness)
             # Then, draw the 3D ground truth bounding box
             translation = labels3d[1]
             rotation = labels3d[2]
@@ -173,12 +207,12 @@ if __name__ == "__main__":
             # # Extract the info from the ground truth to pass into the Pose Estimator
             xyxy = np.asarray([x1, y1, x2, y2])
             pose_input_vector = get_uvwh(orig_img,id,xyxy,FOCAL_LENGTH,verbose=False)
-            print(f"Model Input Vector LUVWH: {[float(p) for p in pose_input_vector]}")
+            if verbose: print(f"Model Input Vector LUVWH: {[float(p) for p in pose_input_vector]}")
             pose_input_vector = torch.tensor(pose_input_vector, dtype=torch.float32).unsqueeze(0) 
             pose_input_crop = make_img_square(orig_img[y1:y2,x1:x2]) # Crop [y1:y2,x1:x2]
             pose_input_crop = torch.tensor(pose_input_crop, dtype=torch.float32).permute(2, 0, 1) / 255.0
             pose_input_crop = pose_input_crop.unsqueeze(0) 
-            print(f"Model Input Size [Crop]:{pose_input_crop.shape}   [Vector]:{pose_input_vector.shape}")
+            if verbose: print(f"Model Input Size [Crop]:{pose_input_crop.shape}   [Vector]:{pose_input_vector.shape}")
             # print(f"\nGround Truth 3D Vectors:\n[ SIZE ]{size}\n[ TRAN ]{translation}\n[ ROT  ]{[float(r) for r in rotation]}")
 
             # # Pass input vectors through the pose estimator
@@ -188,20 +222,28 @@ if __name__ == "__main__":
                 out_tran = output[0][3:6]
                 out_rot  = output[0][6:]
             out_size = util.get_size_vector("engine",object_sizes)
+            # EXPERIMENTAL: RESCALING MODEL TRANSLATION (DOWNSCALED BY 1000x IN TRAINING DATA)
+            out_tran *= 1000.0
+
+
+
+
             # print(f"T: {translation}")
             # print(f"Model Output: \n[ SIZE ]{out_size}\n[ TRAN ]{out_tran}\n[ ROT  ]{out_rot}")
             
-            # Debug output, show comparison between GT and Model estimate
-            print("COMPARISON (Ground Truth vs Model Estimate):")
-            print(f"\n[ SIZE  ]\n[  GT   ] {size}\n[ MODEL ] {out_size}")
-            print(f"\n[ TRANSLATION ]\n[  GT   ] {translation}\n[ MODEL ] {out_tran}")
-            print(f"[ DIFF  ] {np.array([float(f'{ev - gt:.2f}') for ev, gt in zip(out_tran,translation)])}")
             distance = np.linalg.norm(translation - out_tran)
-            print("Euclidean Distance:", distance)
-            
-            print(f"\n[ ROTATION ]\n[  GT   ] {np.array([float(f'{r:.5f}') for r in rotation])}\n[ MODEL ] {out_rot}")
-            rot_diff = np.array([float(f'{ev - gt:.5f}') for ev, gt in zip(out_rot,rotation)])
-            print(f"[ DIFF  ] {rot_diff} [ ABS SUM ] = {np.sum(abs(rot_diff))}")
+            if verbose:
+                # Debug output, show comparison between GT and Model estimate
+                print("COMPARISON (Ground Truth vs Model Estimate):")
+                print(f"\n[ SIZE  ]\n[  GT   ] {size}\n[ MODEL ] {out_size}")
+                print(f"\n[ TRANSLATION ]\n[  GT   ] {translation}\n[ MODEL ] {out_tran}")
+                print(f"[ DIFF  ] {np.array([float(f'{ev - gt:.2f}') for ev, gt in zip(out_tran,translation)])}")
+                
+                print("Euclidean Distance:", distance)
+                
+                print(f"\n[ ROTATION ]\n[  GT   ] {np.array([float(f'{r:.5f}') for r in rotation])}\n[ MODEL ] {out_rot}")
+                rot_diff = np.array([float(f'{ev - gt:.5f}') for ev, gt in zip(out_rot,rotation)])
+                print(f"[ DIFF  ] {rot_diff} [ ABS SUM ] = {np.sum(abs(rot_diff))}")
 
             # # Visualize the pose estimator result
             img = replicator_draw_3d_bounding_box(img, out_tran, out_size, out_rot,FOCAL_LENGTH,color=(0,255,255),verbose=False)
@@ -213,11 +255,20 @@ if __name__ == "__main__":
             out_rot_tensor = torch.tensor(out_rot, dtype=torch.float32).unsqueeze(0) 
             geo_loss = geodesic_loss(out_rot_tensor,gt_rot_tensor)
             ang_loss = rotation_angle_loss(out_rot_tensor,gt_rot_tensor)
+
+            mae_loss = translation_loss(out_tran,translation,convert_to_tensor=True)
+            # euc_loss = translation_euclidean_loss(out_tran,translation)
             
-            print(f"\nGeodesic Loss: {geo_loss:.2f}")
-            print(f"Angular Loss: {ang_loss:.2f}")
-            losses[str(instance_id)] = {"Inst":str(instance_id),"Geo":geo_loss.item(), "Ang":ang_loss.item()}
+            # print(f"\nGeodesic Loss: {geo_loss:.2f}")
+            # print(f"Angular Loss: {ang_loss:.2f}")
+            # losses[str(instance_id)] = {"Inst":str(instance_id),"Geo":geo_loss.item(), "Ang":ang_loss.item()}
             
+            # Update Metrics
+            bench_metrics["rotation_angle_losses"].append(ang_loss)
+            bench_metrics["geodesic_losses"].append(geo_loss)
+            bench_metrics["trans_mae_losses"].append(mae_loss)
+            bench_metrics["trans_euc_losses"].append(distance)
+
             instance_id += 1 
         # Print Losses per detection
         for k in losses:
@@ -226,16 +277,28 @@ if __name__ == "__main__":
 
         # Show image?
         if visualize_images:
-            cv2.imshow("Out",img)
+            cv2.imshow("Labels Drawn",img)
             k = cv2.waitKey(delay_ms)
             if k == ord('q'):
                 break
         # Save image?
         if save_images:
-            save_file = join(output_dir,f"result{c:03d}.jpg")
+            save_file = join(img_output_dir,f"result{c:03d}.jpg")
             cv2.imwrite(save_file,img)
             print(f"Result Saved: {save_file}")
 
        
-        cv2.destroyAllWindows()
+        # cv2.destroyAllWindows()
+    # After all images...
+    if log_results:
+        log_benchmark_metrics(bench_metrics,
+                            output_dir=output_dir, 
+                            log_name="benchmark_results",
+                            log_info=bench_info)
+        plot_benchmark_metrics(bench_metrics, 
+                            output_dir=output_dir, 
+                            file_name=f"bench_{model_folder}",
+                            bench_name=folder_path,
+                            show_plot=True)
+
     print("Done")
