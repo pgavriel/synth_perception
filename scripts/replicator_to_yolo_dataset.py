@@ -11,6 +11,7 @@ from pathlib import Path
 from utilities import get_subfolders
 import numpy as np
 import glob 
+import argparse
 
 class ReplicatorToYOLOConverter:
     def __init__(self, input_dirs: List[str], output_dir: str, validation_split = 0.15, verbose=True):
@@ -63,6 +64,7 @@ class ReplicatorToYOLOConverter:
                     print(f"Skipping {input_dir}: Missing required annotation files.")
                     continue
             # Get labels from each file
+            lbls = set()
             for lbl_file in label_files:
                 # annotations_path = join(input_dir, 'annotation_definitions.json')
                 with open(lbl_file, 'r') as f:
@@ -71,12 +73,12 @@ class ReplicatorToYOLOConverter:
                 #     labels = annotations["annotationDefinitions"][0]["spec"]
                 # else:
                 #     labels = []
-                lbls = []
+                # lbls = []
                 for l in labels:
                     class_name = labels[l].get("class",None)
                     if class_name is not None:
                         unique_labels.add(class_name)
-                        lbls.append(class_name) # make a set
+                        lbls.add(class_name) # make a set
 
             print(f"[ {i:2}/{len(self.input_dirs):2} ][ {os.path.basename(input_dir).center(15)} ] Labels: {set(lbls)}")
 
@@ -121,7 +123,7 @@ class ReplicatorToYOLOConverter:
         image_pattern="rgb_{}.png"
         npy_pattern="bounding_box_2d_{}_{}.npy"
         json_pattern="bounding_box_2d_{}_labels_{}.json"
-        OCCLUSION_THRESH = 0.75
+        OCCLUSION_THRESH = 0.70
 
         # TODO: Add a timer
         total_count_train = 0
@@ -310,28 +312,82 @@ def load_and_display_bounding_boxes(
 
     cv2.destroyAllWindows()
 
+import re
+def find_matching_folders(data_root, folder_patterns):
+    """
+    Recursively search data_root for folders whose names match
+    any of the provided regex patterns.
+
+    Args:
+        data_root (str): Root directory to search.
+        folder_patterns (list[str]): List of regex patterns.
+
+    Returns:
+        list[str]: Full paths to matching folders.
+    """
+    return_paths = []
+    for p in folder_patterns:
+        found_one = False
+        folders = p.split("/")
+        pattern = folders.pop(-1)
+        compiled = re.compile(pattern)
+        folders.insert(0,data_root)
+        temp_root = os.path.join(*folders)
+        print(f"[{p}]: Temp root: {temp_root} - Pattern: {pattern}")
+        for entry in sorted(os.listdir(temp_root)):
+            if compiled.fullmatch(entry) or compiled.search(entry):
+                found_one = True
+                full_path = os.path.join(temp_root,entry)
+                return_paths.append(full_path)
+                print(f"\t> {full_path}")
+        if not found_one:
+            print("\tWARNING: NO MATCHES")
+    return return_paths
 
 # Example usage
 if __name__ == "__main__":
-    # Collect a list of full paths to each dataset folder to include
-    replicator_root = "/home/csrobot/Omniverse/SynthData/engine_loose"
-    replicator_datasets = get_subfolders(replicator_root)
-    replicator_datasets = sorted(replicator_datasets)
-    rep_full_list = [join(replicator_root,dataset) for dataset in replicator_datasets]
-    print(replicator_datasets)
+    print("== REPLICATOR DATA -> YOLO DATASET ==")
+    parser = argparse.ArgumentParser(description='Process one primary argument and a list of secondary arguments.')
 
-    # Include negative example data
+    # Define the first positional argument
+    OUTPUT_DATASET_NAME = "test"
+    parser.add_argument('dataset_name', type=str, default=OUTPUT_DATASET_NAME,
+                        help='The main, required positional argument: output dataset name')
+
+    # Define the argument to collect all remaining arguments as a list
+    # nargs=argparse.REMAINDER tells argparse to collect all remaining command-line arguments
+    # into a list for this argument.
+    parser.add_argument('source_folders', nargs=argparse.REMAINDER, default=[],
+                        help='A list of all other subfolders to gather for final dataset.')
+
+    args = parser.parse_args()
+
+    print(f"Dataset Name: {args.dataset_name}")
+    print(f"Source Folders: {args.source_folders}")
+    data_root = "/home/csrobot/Omniverse/SynthData"
+    input_folders = find_matching_folders(data_root, args.source_folders)
+    
+    
+    # Collect a list of full paths to each dataset folder to include
+    # replicator_root = "/home/csrobot/Omniverse/SynthData/atb1"
+    # replicator_datasets = get_subfolders(replicator_root)
+    # replicator_datasets = sorted(replicator_datasets)
+    # rep_full_list = [join(replicator_root,dataset) for dataset in replicator_datasets]
+    # print(replicator_datasets)
+
+    # # Include negative example data
     # negative_root = "/home/csrobot/Omniverse/SynthData/negative"
     # negative_datasets = get_subfolders(negative_root)
     # neg_full_list = [join(negative_root,dataset) for dataset in negative_datasets]
     
-    convertion_list = rep_full_list #+ neg_full_list
-    print(convertion_list)
+    convertion_list = input_folders
+    print(f"Input:\n{convertion_list}")
+    
     # for d in convertion_list:
     #     load_and_display_bounding_boxes(d)
     # exit(0)
     output_root = "/home/csrobot/synth_perception/data"
-    yolo_dataset_name = "engine_test_loose2"
+    yolo_dataset_name = args.dataset_name
     validation_split = 0.15
 
     verbose = False
@@ -340,3 +396,4 @@ if __name__ == "__main__":
     # exit(0)
     converter.convert()
     converter.validate_output()
+    print(f"Dataset output to: {join(output_root,yolo_dataset_name)}")
