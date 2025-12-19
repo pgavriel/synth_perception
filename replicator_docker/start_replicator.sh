@@ -11,6 +11,7 @@ LOCAL_OUTPUT_DIR="/home/csrobot/Omniverse/SynthData"
 
 LOCAL_SCRIPT_DIR=$(realpath ./scripts)
 LOCAL_CONFIG_DIR=$(realpath ./config)
+CONTAINER_NAME="nvcr.io/nvidia/ov-synthetic-data-generation:0.0.16-beta"
 
 echo "INPUT_MODELS_DIR:    $INPUT_MODELS_DIR"
 echo "INPUT_MATERIALS_DIR: $INPUT_MATERIALS_DIR"
@@ -19,16 +20,17 @@ echo "LOCAL_SCRIPT_DIR:    $LOCAL_SCRIPT_DIR"
 echo "LOCAL_CONFIG_DIR:    $LOCAL_CONFIG_DIR"
 sleep 1
 
+echo "Starting container: $CONTAINER_NAME..."
 docker run --gpus all --entrypoint /bin/bash -it \
     -v "$LOCAL_SCRIPT_DIR:/home/ubuntu/scripts" \
     -v "$LOCAL_OUTPUT_DIR:/home/ubuntu/output" \
     -v "$LOCAL_CONFIG_DIR:/home/ubuntu/config" \
     -v "$INPUT_MODELS_DIR:/home/ubuntu/models" \
     -v "$INPUT_MATERIALS_DIR:/home/ubuntu/materials" \
-    nvcr.io/nvidia/ov-synthetic-data-generation:0.0.16-beta
+    $CONTAINER_NAME
 
-# Original image name    
+# Original container name    
 # nvcr.io/nvidia/ov-synthetic-data-generation:0.0.16-beta
 
-# Custom image name (after following "Accelerating Start up time" instructions)
+# Custom container name (after following "Accelerating Start up time" instructions)
 # ov-synthetic-data-generation-startup:v1
