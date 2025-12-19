@@ -80,7 +80,7 @@ def translation_euclidean_loss(t_pred, t_gt, convert_to_tensor=False):
     return loss 
 
 def geodesic_loss(q_pred, q_gt, eps=1e-8):
-    verbose = True
+    verbose = False
     # Normalize both first, just in case
     q_pred = q_pred / (q_pred.norm(dim=-1, keepdim=True) + eps)
     q_gt = q_gt / (q_gt.norm(dim=-1, keepdim=True) + eps)
@@ -106,6 +106,16 @@ def rotation_angle_loss(q_pred, q_gt, eps=1e-8):
         print(f"Ang :\t{angle}")
     # return (angle ** 2).mean()
     return (angle).mean()
+
+def rotation_euc_loss(q_pred, q_gt, eps=1e-8):
+    verbose = True
+    q_pred = q_pred / (q_pred.norm(dim=-1, keepdim=True) + eps)
+    q_gt = q_gt / (q_gt.norm(dim=-1, keepdim=True) + eps)
+
+    loss = torch.norm(q_pred - q_gt, dim=1).mean() # L2 Loss (Euclidean Distance)
+    if verbose:
+        print(f"Ang EUC:\t{loss}")
+    return loss 
 
 # Training function
 def train(model, train_loader, val_loader, criterion, optimizer, scheduler, device, num_epochs, output_dir):
@@ -248,15 +258,15 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = {}
     config["batch_size"] = 64
-    config["epochs"] = 250
+    config["epochs"] = 100
     config["learning_rate"] = 0.001
     output_root = '/home/csrobot/synth_perception/runs/pose_estimation'
-    prefix = "engine_a"#"gear"
+    prefix = "gear_a"#"gear"
     output_dir = util.create_incremental_dir(output_root,prefix)
     print(f"OUTPUT DIRECTORY: {output_dir}")
 
     # LOAD TRAINING DATA
-    config["training_set"] = "engine_a1"
+    config["training_set"] = "gear_a1"
     data_root = join("/home/csrobot/synth_perception/data/pose-estimation/",config["training_set"])
     train_dataset = PoseDataLoader(join(data_root,"images/train"), join(data_root,"labels/train"))
     val_dataset = PoseDataLoader(join(data_root,"images/val"), join(data_root,"labels/val"))

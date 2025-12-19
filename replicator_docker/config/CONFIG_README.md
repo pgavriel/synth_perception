@@ -123,4 +123,4 @@ Each flag enables generation of the corresponding output per frame.
 
 ## Notes
 * Units must match renderer conventions, by default Replicator uses 100 units_per_meter (centimeters).
-
+* Data generation runs are automatically given a numeric suffix, so you can safely generate multiple batches of data using the same config file / output_name and they will be output to separate output folders (i.e. 'test_001', 'test_002', etc.).

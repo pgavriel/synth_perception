@@ -1,7 +1,7 @@
 {
-    "scenario_name": "Development Scenario",
+    "scenario_name": "Testing Config",
     "output_root": "/home/ubuntu/output",
-    "output_name": "dev/test",
+    "output_name": "dev/exp",
     "copy_config_to_output": true,
 
     "output_size": [1920, 1080],
@@ -30,13 +30,13 @@
 
     "background": {
         "depth": 2000,
-        "density": 0.05,
-        "scale": 11.5,
+        "plane_angle_range": [-5,5],
+        "scale": 13.5,
         "show_plane": true,
         "spawn_objects": true,
-        "object_plane_offset": -100,
+        "object_plane_offset": -200,
         "check_collisions": 0,
-        "object_count": 25,
+        "object_count": 5,
         "object_scale": [1,3],
         "dim_scale_bounds": [0.75,1.5],
         "objects": {
@@ -48,8 +48,8 @@
         },
         "materials": {
             "root": "/home/ubuntu/materials",
-            "include_folders": ["NERVE","Concrete","Wood","Ground"],
-            "variants": 3,
+            "include_folders": ["Concrete","NERVE","Wood"],
+            "variants": 5,
             "roughness_range": [0, 1],
             "metallic_range": [0, 1],
             "specular_range": [0, 1]
@@ -58,15 +58,26 @@
 
     "foreground": {
         "spawn_objects": true,
-        "model_root": "/home/ubuntu/models",
-        "object_count": 3,
+        "model_root": "/home/ubuntu/models/ATB1_download",
+        "visible_object_count": 2,
+        "instance_per_object": 2,
         "objects": {
-            "engine.usd": "engine"
+            "atb1_gear-large/fused/usd/fused_model.usd":"gear_large"
         },
+        "random_position": true,
         "random_rotation": true,
         "random_color": false,
+        "random_materials": false,
+        "materials": {
+            "root": "/home/ubuntu/materials",
+            "include_folders": ["ATB1_Custom"],
+            "variants": 10,
+            "roughness_range": [0, 1],
+            "metallic_range": [0, 1],
+            "specular_range": [0, 1]
+        },
         "spawn_vfov": 20,
-        "z_range": [200,400],
+        "z_range": [30,100],
         "default_pos": [0,0,1000],
         "default_rot": [-90,0,0],
         "default_scale": 100
@@ -74,14 +85,14 @@
 
     "output_types": {
         "rgb": true,
-        "camera_params": true,
-        "bounding_box_2d_tight": true,
-        "bounding_box_2d_loose": false,
+        "camera_params": false,
+        "bounding_box_2d_tight": false,
+        "bounding_box_2d_loose": true,
         "semantic_segmentation": false,
         "instance_segmentation": false,
         "distance_to_camera": false,
         "distance_to_image_plane": false,
-        "bounding_box_3d": true,
+        "bounding_box_3d": false,
         "occlusion": false,
         "normals": false,
         "pointclouds": false

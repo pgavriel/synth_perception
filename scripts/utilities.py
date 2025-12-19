@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from pathlib import Path
+from PIL import Image
 import datetime
 import json
 import random
@@ -365,7 +366,8 @@ def replicator_load_frame_data(dataset_dir, frame_num,
         {
             "prim_path": key,
             "2d_label": two_d_dict[key],
-            "3d_label": three_d_dict[key]
+            "3d_label": three_d_dict[key],
+            "label_name": class_labels_2d[str(two_d_dict[key][0])]['class']
         }
         for key in matching_keys
     ]
@@ -554,11 +556,53 @@ def capture_frames(output_dir="captured_frames", prefix="frame_", digits=3):
     cap.release()
     cv2.destroyAllWindows()
 
+def generate_colored_noise_images(input_dir, output_dir, num_outputs=10):
+    # Get all .png files recursively from the input directory
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    image_paths = list(input_dir.rglob("*.png"))
+    if len(image_paths) < 3:
+        raise ValueError("Need at least 3 grayscale images to generate a color image.")
+
+    for i in range(num_outputs):
+        rgb_channels = []
+
+        for _ in range(3):
+            path = random.choice(image_paths)
+            scale = random.uniform(0.0, 1.0)
+            gray = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            gray = np.clip(gray.astype(np.float32) * scale, 0, 255).astype(np.uint8)
+            rgb_channels.append(gray)
+
+        # Stack into color image
+        color_img = cv2.merge(rgb_channels)  # Shape: H x W x 3 (BGR in OpenCV)
+
+        # Convert to HSV
+        hsv_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2HSV)
+
+        # Random hue shift (hue range is 0-179)
+        hue_shift = random.randint(0, 179)
+        hsv_img[:, :, 0] = (hsv_img[:, :, 0].astype(int) + hue_shift) % 180
+
+        # Convert back to BGR
+        shifted_img = cv2.cvtColor(hsv_img, cv2.COLOR_HSV2BGR)
+
+        # Save the image
+        out_path = output_dir / f"{i+1:05d}.png"
+        cv2.imwrite(str(out_path), shifted_img)
+
 if __name__ == "__main__":
     # save_dir = "/home/csrobot/Pictures/collected"
     # capture_frames(save_dir)
     pass
     # Testing replicator stuff
     # replicator_load_frame_data("/home/csrobot/Omniverse/SynthData/engine_loose/test_004","0003")
-    csv_file = "/home/csrobot/Omniverse/SynthData/benchmarking/engine_001/benchmarking/benchmark_results.csv"
-    scatterplot_from_csv(csv_file,"trans_mae_losses_mean","geodesic_losses_mean")
+    # csv_file = "/home/csrobot/Omniverse/SynthData/benchmarking/engine_001/benchmarking/benchmark_results.csv"
+    # scatterplot_from_csv(csv_file,"trans_mae_losses_mean","geodesic_losses_mean")
+    # Generate colored noise images
+    input_dir = "/home/csrobot/Omniverse/Materials/vMaterials_2/NOISE"
+    output_dir = "/home/csrobot/Omniverse/Materials/vMaterials_2/NOISE_COLOR_S"
+    num_outputs = 200
+    generate_colored_noise_images(input_dir,output_dir,num_outputs)

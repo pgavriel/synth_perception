@@ -5,19 +5,21 @@ from os.path import join
 
 # Load the YOLO model
 # Load a model
-model_folder = "engine_test_loose"
-model_folder = "rep_gear_1"
+model_folder = "engine_test_loose_2"
+model_folder = "engine_test2"
+model_folder = "frankenstein1"
+# model_folder = "gear_test_loose"
 model_path = join("/home/csrobot/synth_perception/runs/detect",model_folder,"weights/best.pt")
 model = YOLO(model_path)  
 model.info()
 
 # YOLO Inference Configuration [ https://docs.ultralytics.com/modes/predict/#inference-arguments ]
-min_conf = 0.5 # default: 0.25
+min_conf = 0.6 # default: 0.25
 iou = 0.5 # default: 0.7 (lower numbers prevent prediction overlapping)
-max_det = 3
+max_det = 20
 visualize = False # default: False (saves a bunch of images)
 # imgsz = (480,640) # default: 640 (width), 1920 on synth
-imgsz = 1920 # default: 640 (width), 1920 on synth
+imgsz = 1080 # default: 640 (width), 1920 on synth
 
 # Initialize the video capture (camera device 0)
 cap = cv2.VideoCapture(0)
@@ -33,7 +35,7 @@ try:
         if not ret:
             print("Failed to grab frame")
             break
-
+        print(f"Frame: {frame.shape}")
         # Start time for processing 
         start_time = time.time()
 

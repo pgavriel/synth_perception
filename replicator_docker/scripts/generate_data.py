@@ -1,17 +1,21 @@
 import time
 import omni.replicator.core as rep
+import omni.usd
 import os.path
 from os.path import join, dirname, basename
 import sys
 import math
 from math import ceil
 import random
-# from pxr import Usd, UsdGeom
+# from typing import Optional
+# from pxr import Sdf, Usd
 
 sys.path.append(dirname(__file__))
 import utilities as util
 from utilities import clamp
+from utilities import print_prim, inspect_object, get_all_prim_paths
     
+
 def create_camera(config):
     print(f"\nCreating Camera...")
     camera_position = tuple(config["position"])
@@ -97,7 +101,11 @@ def create_background_objects(config):
             objects_list.append(rep.create.cone(position=spawn_pos,scale=scale_dist))#,material=default_mat))
     if config["objects"]["cube"] == True:
         for i in range(obj_count):
-            objects_list.append(rep.create.cube(position=spawn_pos,scale=scale_dist))#,material=default_mat))
+            cube = rep.create.cube(position=spawn_pos,scale=scale_dist)
+            # inspect_object(cube)
+            objects_list.append(cube)
+            # print_prim(cube.outputs)
+            # objects_list.append(rep.create.cube(position=spawn_pos,scale=scale_dist))#,material=default_mat))
     if config["objects"]["cylinder"] == True:
         for i in range(obj_count):
             objects_list.append(rep.create.cylinder(position=spawn_pos,scale=scale_dist))#,material=default_mat))
@@ -126,7 +134,7 @@ def load_diffuse_materials(config, verbose=True):
     Returns:
         Replicator Group: Group of rep material objects created from texture images.
     """
-    print(f"\nCreating Background Materials...")
+    print(f"\nCreating Materials...")
     materials = []
     root_dir = config["root"]
     subdirs = config["include_folders"]
@@ -201,31 +209,41 @@ def create_randomized_material(config, diff_texture_path, rough_texture_path=Non
     return mat
 
 def create_foreground_objects(config):
-    # Expects a dictionary of objects of the form "USD File: Class Label"
+    # Expects a dictionary of objects of the form "USD File": "Class Label"
     aspect = config["output_size"][0]/config["output_size"][1]
     objects = []
     config = config["foreground"]
-    n = config["object_count"]
+    # n = config["object_count"]
     obj = config["objects"]
+    num_instances = config["instance_per_object"]
+    usds = []
+    # print(f"\nCreating {n} foreground objects...")
+    # for i in range(n):
+    #     choice = random.sample(list(config["objects"].keys()),1)[0]
+    # TODO: Add parameter to create n duplicates of each object
+    n = len(list(obj.keys())) * num_instances
     print(f"\nCreating {n} foreground objects...")
-    for i in range(n):
-        choice = random.sample(list(config["objects"].keys()),1)[0]
+    i = 0
+    for choice in obj:
         model_file = join(config["model_root"],choice)
         class_name = obj[choice]
         print(f"[{i+1}/{n}] Model: {model_file} - Class: {class_name}")
+        i += 1
         if os.path.isfile(model_file):
             # Load Model File
-            usd_model = rep.create.from_usd(model_file,
-                                    semantics=[('class', class_name)], 
-                                    count=1)
-            with usd_model:
-                rep.modify.pose(
-                    position=tuple(config["default_pos"]),
-                    rotation=tuple(config["default_rot"]),
-                    scale = config["default_scale"]
-                )
+            for x in range(num_instances):
+                usd_model = rep.create.from_usd(model_file,
+                                        semantics=[('class', class_name)], 
+                                        count=1)
+                with usd_model:
+                    rep.modify.pose(
+                        position=tuple(config["default_pos"]),
+                        rotation=tuple(config["default_rot"]),
+                        scale = config["default_scale"]
+                    )
 
-            objects.append(usd_model)
+                objects.append(usd_model)
+                usds.append(model_file)
         elif choice == "Plane":
             plane = rep.create.plane(
                 position=tuple(config["default_pos"]),
@@ -249,7 +267,7 @@ def create_foreground_objects(config):
             for m in models:
                 print(f"> {m}")
             return None
-    return objects
+    return objects, usds
 
 def get_random_foreground_position(config):
     """
@@ -303,6 +321,21 @@ def generate_foreground_positions(config,n=100):
     print("Done.")
     return positions
 
+def generate_visibility_patterns(fg_objects,config,n=100):
+    print(f"Generating {n} possible visibility masks...")
+    visible_objects = []
+    num_objects = len(fg_objects)
+    num_visible = config["visible_object_count"]
+    print("num objects: ",num_objects)
+    visible_objects = []
+    for _ in range(n):
+        mask = [False] * num_objects
+        true_indices = random.sample(range(num_objects), num_visible)  # pick x unique indices
+        for idx in true_indices:
+            mask[idx] = True
+        visible_objects.append(mask)
+    return visible_objects
+
 def run_data_generation_scenario(config_path):
     # MAIN START ========== ========== ========== ========== ========== ========== ========== ========== 
     print("\n== SCENARIO START ==\n")
@@ -338,20 +371,35 @@ def run_data_generation_scenario(config_path):
 
         # Create Background
         bkg_plane = get_background_plane(config)
+        bc = config["background"]
+        par = bc["plane_angle_range"]
         if config["background"]["spawn_objects"] == True:
             object_plane = get_background_object_plane(config)
             background_group = create_background_objects(config)
+            print("Done")
+            
         background_materials = load_diffuse_materials(config["background"]["materials"])
         # mdl_paths = load_mdl_materials(config["background"]["materials"])
 
         # Create Foreground objects
         fc = config["foreground"]
         if fc["spawn_objects"]:
-            foreground_objects = create_foreground_objects(config)
-            n = 2 * config["num_frames"] * fc["object_count"]
+            foreground_objects, usds = create_foreground_objects(config)
+            if fc["random_materials"]:
+                foreground_materials = load_diffuse_materials(config["foreground"]["materials"])
+            else:
+                foreground_materials = None
+            n = 2 * config["num_frames"] * fc["visible_object_count"]
             # TODO: Maybe pre-generate a list for each object, one position per frame
             foreground_positions = generate_foreground_positions(config,n)
+            # foreground_visible = generate_visibility_patterns(foreground_objects,fc,n)
+            pv = min(1.0, fc["visible_object_count"]/len(foreground_objects))
+            print(f"Foreground Visibility: PV(True): {pv}, 1-PV(False): {1-pv}")
+            # foreground_visibility = rep.distribution.choice([True,False],weights=[pv,1.0-pv])
         
+        setup_end_time = time.time()
+        total_time = setup_end_time - start_time
+        print(f"\n🕒 Total Setup Time: {total_time:.2f} seconds")
         # Generate N frames ========== ========== ========== ========== ========== ========== ========== 
         with rep.trigger.on_frame(max_execs=config["num_frames"],rt_subframes=config["num_subframes"]):
             print("Generating...")
@@ -370,6 +418,9 @@ def run_data_generation_scenario(config_path):
             
             # RANDOMIZE BACKGROUND PLANE ========== ========== ========== ========== 
             with rep.create.group([bkg_plane]):
+                rep.modify.pose(
+                    rotation=rep.distribution.uniform((90+par[0],par[0], 0), (90+par[1], par[1], 0)),
+                )
                 # rep.randomizer.color(
                 #     colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
                 # )
@@ -397,13 +448,20 @@ def run_data_generation_scenario(config_path):
                             rep.randomizer.color(
                                 colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1))
                             )
+                        if fc["random_materials"]:
+                            # print("YES RANDOMIZE FG MATERIALS")
+                            rep.randomizer.materials(foreground_materials)
                         if fc["random_rotation"]:
                             rep.randomizer.rotation()
 
                         # rand_pos = get_random_foreground_position(config)
-                        rep.modify.pose(position=rep.distribution.choice(foreground_positions))
-            
+                        if fc["random_position"]:
+                            rep.modify.pose(position=rep.distribution.choice(foreground_positions))
                         # rep.randomizer.get_random_foreground_position(config)
+
+                        # Set the probability of being visible as proportional to the desired number of objects to the total
+                        # NOTE: This approach should keep "object_count" objects visible ON AVERAGE, but is not strict.
+                        rep.modify.visibility(rep.distribution.choice([True,False],weights=[pv,1.0-pv]))
 
         # Initialize and attach writer
         writer = rep.WriterRegistry.get("BasicWriter")
@@ -442,8 +500,10 @@ def run_data_generation_scenario(config_path):
         # Script timer
         end_time = time.time()
         total_time = end_time - start_time
-        time_per_image = total_time / config["num_frames"] if config["num_frames"] > 0 else float('inf')
+        generation_time = end_time - setup_end_time
+        time_per_image = generation_time / config["num_frames"] if config["num_frames"] > 0 else float('inf')
         print(f"\n🕒 Total runtime: {total_time:.2f} seconds")
+        print(f"\n🕒 Total Generation Time: {generation_time:.2f} seconds")
         print(f"🕒 Average time per image: {time_per_image:.4f} seconds")
         
         # Copy config to data output directory

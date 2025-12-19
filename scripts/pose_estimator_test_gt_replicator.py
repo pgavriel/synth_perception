@@ -87,6 +87,31 @@ def plot_benchmark_metrics(bench_metrics, output_dir, file_name="benchmark_loss_
     else:
         plt.close()
 
+import ast
+def load_experiment_config(csv_file, experiment_name):
+    with open(csv_file, mode='r', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row.get("Experiment") == experiment_name:
+                return row
+                # config_str = row.get("Config")
+                # if config_str:
+                #     try:
+                #         return ast.literal_eval(config_str)
+                #     except Exception as e:
+                #         raise ValueError(f"Failed to parse Config string as dictionary: {e}")
+        raise ValueError(f"Experiment '{experiment_name}' not found in {csv_file}")
+
+import yaml
+def load_names_from_yaml(yaml_path):
+    with open(yaml_path, 'r') as f:
+        data = yaml.safe_load(f)
+    
+    names = data.get("names")
+    if not isinstance(names, dict):
+        raise ValueError(f"'names' tag not found or not a dictionary in: {yaml_path}")
+    
+    return names
 
 if __name__ == "__main__":
     
@@ -94,17 +119,17 @@ if __name__ == "__main__":
     object_sizes = util.load_json("object_sizes.json")
 
     # Create output directory for saving images with drawn labels/predictions
-    save_images = True
+    save_images = False
     if save_images:
-        img_output_dir = util.create_incremental_dir("/home/csrobot/Pictures/","bench_best")
+        img_output_dir = util.create_incremental_dir("/home/csrobot/Pictures/","eng_pose_demo")
         os.makedirs(img_output_dir, exist_ok=True)
 
 
     visualize_images = True
-    delay_ms = 0 # 0 to wait indefinitely for key input on each image
+    delay_ms = 20 # 0 to wait indefinitely for key input on each image
     
     # Whether to log / plot results
-    log_results = False
+    log_results = True
 
     verbose = True
 
@@ -118,17 +143,31 @@ if __name__ == "__main__":
     color = (255, 255, 255)  # White color
     thickness = 2
 
-    # TODO: Load the experiment_log.csv, to get additional information on the model being tested, like training dataset and hyperparams
     # Load the pose estimator model
     pose_model = PoseEstimationModel()
     # model_folder = "mustard_041"
     model_root = "/home/csrobot/synth_perception/runs/pose_estimation"
-    model_folder = "uv_engine_022"
+    model_folder = "gear_a_001"
     model_file = "model_epoch_100.pth"
     state_dict = torch.load(join(model_root,model_folder,model_file), weights_only=True)
     pose_model.load_state_dict(state_dict)
     pose_model.eval()
     print('Pose Estimation model loaded successfully!')
+
+    # Load the experiment log, get model information and training dataset labels
+    experiment_log_path = "/home/csrobot/synth_perception/runs/pose_estimation/experiment_log.csv"
+    experiment_row = load_experiment_config(experiment_log_path,model_folder)
+    experiment_config = ast.literal_eval(experiment_row.get("Config",None))
+    # print(experiment_row)
+    print(f"Loaded Model Info from Experiment Log\nModel: {model_folder} - {experiment_row.get('Note','No Note')}")
+    training_dataset = experiment_config.get("training_set","Unknown")
+    print(f"Training Set: {training_dataset}")
+    training_data_root = "/home/csrobot/synth_perception/data/pose-estimation"
+    training_info_path = join(training_data_root,training_dataset,"data.yaml")
+    model_gt_dict = load_names_from_yaml(training_info_path)
+    inverted_model_gt_dict = {value: key for key, value in model_gt_dict.items()}
+    print(f"Labels: {model_gt_dict}\nInv: {inverted_model_gt_dict}")
+    # exit()
 
     # FILE PATTERNS FOR GROUND TRUTH IMAGES AND LABELS
 
@@ -137,11 +176,12 @@ if __name__ == "__main__":
     # Should be a direct replicator output dataset with 2D (loose) and 3D bounding box labels
     folder_path = "/home/csrobot/Omniverse/SynthData/benchmarking/engine_single_001"
     # folder_path = "/home/csrobot/Omniverse/SynthData/benchmarking/engine_001"
+    folder_path = "/home/csrobot/Omniverse/SynthData/benchmarking/gear_001"
 
     image_pattern="rgb_{}.png"
     image_files = sorted(glob.glob(os.path.join(folder_path, image_pattern.format("*"))))
     # Restrict the size of test images (mostly for dev testing)
-    limit_test_sample = True
+    limit_test_sample = False
     test_sample_size = 25
     if limit_test_sample:
         image_files = image_files[:test_sample_size+1]
@@ -158,7 +198,7 @@ if __name__ == "__main__":
         "model_name": model_folder,
         "model_file": model_file,
         "bench_dataset": folder_path.split('/')[-1],
-        "training_dataset": "Unknown" # TODO: load experiment log csv and get this info
+        "training_dataset": training_dataset 
     }
     output_dir  = join(folder_path,"benchmarking")
 
@@ -169,6 +209,7 @@ if __name__ == "__main__":
         if int(frame_num) == 0: continue
         
         orig_img, frame_data = util.replicator_load_frame_data(folder_path,frame_num)
+        if verbose: print(f"Frame Annotations: {len(frame_data)}")
         img = orig_img.copy()
 
         # GET CAMERA INTRINSIC INFORMATION
@@ -188,11 +229,14 @@ if __name__ == "__main__":
             bb2d = label_pair["2d_label"]
             bb3d = label_pair["3d_label"]
             labels3d = replicator_extract_3dbb_info(bbox=bb3d)[0]
+            label_str = label_pair["label_name"]
+            proper_id = inverted_model_gt_dict[label_str]
         # for bb2d, bb3d, labels3d in zip(bboxes_2d, bboxes_3d, labels):
             if verbose: print(f"\n===== [ IMAGE {c}][ FRAME {frame_num} ][ DETECTION {instance_id}] ==========================================")
             # VISUALIZE GROUND TRUTHS  ======================
             # Draw the ground truth 2D bounding box
             id, x1, y1, x2, y2, occlusion = bb2d
+            if verbose: print(f"ID Fixed: [{id}: {label_str}] -> [{proper_id}: {model_gt_dict[proper_id]}]")
             pt1, pt2 = (int(x1), int(y1)), (int(x2), int(y2))
             cv2.rectangle(img, pt1, pt2, color, 1)
             img = cv2.putText(img, str(instance_id), (x1-5,y1-5), font, font_scale, color, thickness)
@@ -206,7 +250,7 @@ if __name__ == "__main__":
             # RUN MODEL INFERENCE =========================
             # # Extract the info from the ground truth to pass into the Pose Estimator
             xyxy = np.asarray([x1, y1, x2, y2])
-            pose_input_vector = get_uvwh(orig_img,id,xyxy,FOCAL_LENGTH,verbose=False)
+            pose_input_vector = get_uvwh(orig_img,proper_id,xyxy,FOCAL_LENGTH,verbose=False)
             if verbose: print(f"Model Input Vector LUVWH: {[float(p) for p in pose_input_vector]}")
             pose_input_vector = torch.tensor(pose_input_vector, dtype=torch.float32).unsqueeze(0) 
             pose_input_crop = make_img_square(orig_img[y1:y2,x1:x2]) # Crop [y1:y2,x1:x2]
@@ -221,9 +265,9 @@ if __name__ == "__main__":
                 # out_size = output[0][0:3] # Get size from json file instead
                 out_tran = output[0][3:6]
                 out_rot  = output[0][6:]
-            out_size = util.get_size_vector("engine",object_sizes)
+            out_size = util.get_size_vector(model_gt_dict[proper_id],object_sizes)
             # EXPERIMENTAL: RESCALING MODEL TRANSLATION (DOWNSCALED BY 1000x IN TRAINING DATA)
-            out_tran *= 1000.0
+            # out_tran *= 1000.0
 
 
 

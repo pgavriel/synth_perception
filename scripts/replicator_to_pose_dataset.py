@@ -398,10 +398,10 @@ def load_and_display_bounding_boxes(
 # Example usage
 if __name__ == "__main__":
     # Collect a list of full paths to each dataset folder to include
-    replicator_root = "/home/csrobot/Omniverse/SynthData/engine_loose"
+    replicator_root = "/home/csrobot/Omniverse/SynthData/gear_loose"
     replicator_datasets = get_subfolders(replicator_root)
-    replicator_datasets.remove("neg_001")
-    replicator_datasets.remove("neg_002")
+    # replicator_datasets.remove("neg_001")
+    # replicator_datasets.remove("neg_002")
     # replicator_datasets = ["t_test_001"]
     # replicator_datasets = sorted(replicator_datasets)
     # replicator_datasets = ["test_007"]
@@ -420,7 +420,7 @@ if __name__ == "__main__":
     # exit(0) # Checkpoint 1 =========
 
     output_root = "/home/csrobot/synth_perception/data/pose-estimation"
-    output_dataset_name = "engine_a1"
+    output_dataset_name = "gear_a1"
     validation_split = 0.15
 
     crop_size = 96
