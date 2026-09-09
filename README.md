@@ -26,7 +26,10 @@ cd synth_perception/replicator_docker
  ./scripts/run_batch.sh dev_config.json
  
 // This will run three data generation batches in sequence
- ./scripts/run_batch.sh example_config example_config different_config
+ ./scripts/run_batch.sh example_config example_config different_config  
+   
+ // This will run a sequence of configurations defined in a text file   
+ ./scripts/run_batch_from_text.sh   
  ```
  The generated data will then be saved in the *LOCAL_OUTPUT_DIR* specified in **start_replicator.sh**.
    
@@ -34,6 +37,14 @@ cd synth_perception/replicator_docker
 #### Data Generation (Omniverse Replicator):  
 ##### replicator_to_yolo_dataset.py  
 Combines an arbitrary number of synthetic data batches directly output from Replicator into a single training dataset formatted for directly training a YOLO detection model.   
+This script accepts arguments for a source data root, output dataset name, and a list of regex patterns to search for folder names (within the data root) to combine.   
+**For example,** if all of your Replicator data was being stored in *'/home/user/data'*, and you wanted to combine all batches starting with *'a'* or *'trial1'* into a YOLO dataset named *'ds1'*, you would run:   
+```
+python3 ./scripts/replicator_to_yolo_dataset.py --source-root /home/user/data ds1 ^a ^trial1    
+
+// You could then very easily train a model on that dataset via:  
+python3 ./scripts/yolo_train.py -n ds1
+```
 
 #### Data Generation (Unity):  
 ##### unity_to_yolo_dataset.py  

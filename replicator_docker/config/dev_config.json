@@ -1,11 +1,11 @@
 {
-    "scenario_name": "Testing Config",
+    "scenario_name": "MOADv2 Supplemental Experiment 2 - MOAD (Raw) Model Synth Data",
     "output_root": "/home/ubuntu/output",
-    "output_name": "dev/exp",
+    "output_name": "ex2/kiri-randmat",
     "copy_config_to_output": true,
 
     "output_size": [1920, 1080],
-    "num_frames": 10,
+    "num_frames": 200,
     "num_subframes": 32,
 
     "camera": {
@@ -33,10 +33,11 @@
         "plane_angle_range": [-5,5],
         "scale": 13.5,
         "show_plane": true,
+        
         "spawn_objects": true,
         "object_plane_offset": -200,
         "check_collisions": 0,
-        "object_count": 5,
+        "object_count": 50,
         "object_scale": [1,3],
         "dim_scale_bounds": [0.75,1.5],
         "objects": {
@@ -58,11 +59,14 @@
 
     "foreground": {
         "spawn_objects": true,
-        "model_root": "/home/ubuntu/models/ATB1_download",
-        "visible_object_count": 2,
+        "model_root": "/home/ubuntu/models/experiment2",
+        "visible_object_count": 5,
         "instance_per_object": 2,
         "objects": {
-            "atb1_gear-large/fused/usd/fused_model.usd":"gear_large"
+            "kiri-gear/fused_model.usd": "gear_large",
+            "kiri-wp/fused_model.usd": "conn_wp",
+            "kiri-nut/fused_model.usd": "nut_m16",
+            "kiri-sprocket/fused_model.usd": "sprocket_large"
         },
         "random_position": true,
         "random_rotation": true,
@@ -76,8 +80,14 @@
             "metallic_range": [0, 1],
             "specular_range": [0, 1]
         },
-        "spawn_vfov": 20,
-        "z_range": [30,100],
+        "randomize_material_properties": true,
+        "material_property_ranges": {
+            "roughness": [0.0, 1.0],
+            "metallic":  [0.0, 1.0],
+            "specular":  [0.0, 1.0]
+        },
+        "spawn_vfov": 23,
+        "z_range": [40,150],
         "default_pos": [0,0,1000],
         "default_rot": [-90,0,0],
         "default_scale": 100

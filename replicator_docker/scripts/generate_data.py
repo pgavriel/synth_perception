@@ -336,6 +336,76 @@ def generate_visibility_patterns(fg_objects,config,n=100):
         visible_objects.append(mask)
     return visible_objects
 
+# ── TEMPORARY DIAGNOSTIC — paste this right after create_foreground_objects() ──
+def print_material_candidates():
+    import omni.usd
+    from pxr import UsdShade
+    stage = omni.usd.get_context().get_stage()
+    print("\n== STAGE MATERIAL DIAGNOSTIC ==")
+    print("All Shader prims with PBR-related attributes:")
+    found = False
+    for p in stage.TraverseAll():
+        if UsdShade.Shader(p):
+            attrs = [
+                (a.GetName(), a.Get())
+                for a in p.GetAttributes()
+                if any(k in a.GetName()
+                       for k in ("roughness", "metallic", "specular", "diffuse"))
+            ]
+            if attrs:
+                found = True
+                print(f"\n  {p.GetPath()}")
+                for name, val in attrs:
+                    print(f"    {name} = {val}")
+    if not found:
+        print("  No shader prims with PBR attributes found.")
+        print("  All prims in stage:")
+        for p in stage.TraverseAll():
+            print(f"    {p.GetPath()}  [{p.GetTypeName()}]")
+    print("== END DIAGNOSTIC ==\n")
+
+
+def get_object_material_paths(usd_object):
+    """
+    Find all OmniPBR material prim paths bound to a USD object loaded
+    via rep.create.from_usd(). Returns a list of prim path strings.
+    """
+    import omni.usd
+    from pxr import UsdShade, Sdf
+
+    stage = omni.usd.get_context().get_stage()
+    material_paths = []
+
+    raw_prims = usd_object._get_prims()
+
+    for raw in raw_prims:
+        # _get_prims() may return Usd.Prim objects or path strings depending
+        # on the Replicator version — handle both
+        if isinstance(raw, str):
+            root_path = Sdf.Path(raw)
+        else:
+            root_path = raw.GetPath()
+
+        # Walk all prims under this root looking for material bindings
+        for p in stage.TraverseAll():
+            try:
+                if not p.GetPath().HasPrefix(root_path):
+                    continue
+            except Exception:
+                continue
+
+            binding = UsdShade.MaterialBindingAPI(p)
+            bound   = binding.GetDirectBinding().GetMaterialPath()
+            if bound and str(bound) not in material_paths:
+                material_paths.append(str(bound))
+
+    if not material_paths:
+        print(f"  [WARN] No material bindings found for object — "
+              f"inspect the stage to find the correct prim paths")
+
+    return material_paths
+
+
 def run_data_generation_scenario(config_path):
     # MAIN START ========== ========== ========== ========== ========== ========== ========== ========== 
     print("\n== SCENARIO START ==\n")
@@ -385,6 +455,12 @@ def run_data_generation_scenario(config_path):
         fc = config["foreground"]
         if fc["spawn_objects"]:
             foreground_objects, usds = create_foreground_objects(config)
+
+            # ── TEMPORARY DIAGNOSTIC — remove after finding material paths ──
+            # if foreground_objects:
+            #     print_material_candidates()
+            # ───────────────────────────────────────────────────────────────
+
             if fc["random_materials"]:
                 foreground_materials = load_diffuse_materials(config["foreground"]["materials"])
             else:
@@ -451,6 +527,7 @@ def run_data_generation_scenario(config_path):
                         if fc["random_materials"]:
                             # print("YES RANDOMIZE FG MATERIALS")
                             rep.randomizer.materials(foreground_materials)
+
                         if fc["random_rotation"]:
                             rep.randomizer.rotation()
 
@@ -462,6 +539,39 @@ def run_data_generation_scenario(config_path):
                         # Set the probability of being visible as proportional to the desired number of objects to the total
                         # NOTE: This approach should keep "object_count" objects visible ON AVERAGE, but is not strict.
                         rep.modify.visibility(rep.distribution.choice([True,False],weights=[pv,1.0-pv]))
+
+                        if fc.get("randomize_material_properties", False):
+                            rmp = fc["material_property_ranges"]
+                            # Target Principled_BSDF shader prims across all loaded USD instances
+                            # using a wildcard pattern that matches all Ref_Xform_XX instances
+                            # NOTE: This "FusedMaterial" name may only apply to my custom exported USD models,
+                            #       a different path may be required for other models (see line 459)
+                            shader_prims = rep.get.prims(
+                                path_pattern=".*\/Ref\/_materials\/FusedMaterial\/Principled_BSDF"
+                            )
+                            with shader_prims:
+                                rep.modify.attribute(
+                                    "inputs:roughness",
+                                    rep.distribution.uniform(
+                                        rmp["roughness"][0],
+                                        rmp["roughness"][1]
+                                    )
+                                )
+                                rep.modify.attribute(
+                                    "inputs:metallic",
+                                    rep.distribution.uniform(
+                                        rmp["metallic"][0],
+                                        rmp["metallic"][1]
+                                    )
+                                )
+                                rep.modify.attribute(
+                                    "inputs:specular",
+                                    rep.distribution.uniform(
+                                        rmp["specular"][0],
+                                        rmp["specular"][1]
+                                    )
+                                )
+
 
         # Initialize and attach writer
         writer = rep.WriterRegistry.get("BasicWriter")

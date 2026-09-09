@@ -354,17 +354,28 @@ if __name__ == "__main__":
     parser.add_argument('dataset_name', type=str, default=OUTPUT_DATASET_NAME,
                         help='The main, required positional argument: output dataset name')
 
+    parser.add_argument('--source-root', type=str, default="/home/csrobot/Omniverse/SynthData/ex2",
+                        help='The root folder to search for Replicator data batches')
+    
+
     # Define the argument to collect all remaining arguments as a list
     # nargs=argparse.REMAINDER tells argparse to collect all remaining command-line arguments
     # into a list for this argument.
     parser.add_argument('source_folders', nargs=argparse.REMAINDER, default=[],
                         help='A list of all other subfolders to gather for final dataset.')
+    
+    
+    parser.add_argument("-f", "--force", action="store_true", default=False,
+                    help="Force operation without confirmation")
 
     args = parser.parse_args()
 
-    print(f"Dataset Name: {args.dataset_name}")
-    print(f"Source Folders: {args.source_folders}")
-    data_root = "/home/csrobot/Omniverse/SynthData"
+    print(" ==== OUTPUT ===")
+    print(f"  YOLO Dataset Name: {args.dataset_name}")
+    print(" ==== INPUT  ===")
+    print(f"  Source Root: {args.source_root}")
+    print(f"  Source Folders: {args.source_folders}")
+    data_root = args.source_root #"/home/csrobot/Omniverse/SynthData/ex2"
     input_folders = find_matching_folders(data_root, args.source_folders)
     
     
@@ -388,9 +399,11 @@ if __name__ == "__main__":
     # exit(0)
     output_root = "/home/csrobot/synth_perception/data"
     yolo_dataset_name = args.dataset_name
-    validation_split = 0.15
+    validation_split = 0.10
 
     verbose = False
+    if not args.force:
+        input("Continue?:")
 
     converter = ReplicatorToYOLOConverter(convertion_list, join(output_root,yolo_dataset_name),validation_split,verbose)
     # exit(0)
